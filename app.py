@@ -65,8 +65,9 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not clean:
             continue
 
-        # Cambio Utensile (M6): se l'utensile precedente ha lavorato, inserisce M5 ed M9 prima del cambio se non già fatto
+        # Cambio Utensile (M6)
         if re.search(r'\bT\d+\s+M6\b', clean) or (re.search(r'\bT\d+\b', clean) and 'M6' in clean):
+            # Se per qualche motivo l'utensile precedente ha lavorato e non ha ancora inserito M5/M9, lo mettiamo di sicurezza
             if ha_lavorato_questo_utensile:
                 righe_iso.append(f"N{n_linea} M5")
                 n_linea += 2
@@ -193,16 +194,17 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if any(k in clean for k in ['X', 'Y', 'Z', 'G0', 'G1', 'G2', 'G3']):
             ha_lavorato_questo_utensile = True
 
-        # INSERIMENTO AUTOMATICO DI M5 ED M9 DOPO G00 Z (es. G00 Z100)
-        is_g00_z_positivo = ("G0" in clean or "G00" in clean) and m_z and float(m_z.group(1)) > 0
-        if is_g00_z_positivo and ha_lavorato_questo_utensile:
+        # CONTROLLO RIGOROSO: INSERISCI M5 E M9 SUBITO DOPO IL POSIZIONAMENTO FINALE IN Z (es. G00 Z100)
+        # Verifichiamo se l'utensile ha lavorato, se c'è un movimento in Z e se la quota Z è positiva (> 0)
+        is_ritiro_z = m_z and float(m_z.group(1)) > 0
+        if is_ritiro_z and ha_lavorato_questo_utensile:
             righe_iso.append(f"N{n_linea} M5")
             n_linea += 2
             righe_iso.append(f"N{n_linea} M9")
             n_linea += 2
-            ha_lavorato_questo_utensile = False
+            ha_lavorato_questo_utensile = False # Segna che questo utensile ha terminato e spento mandrino/refrigerante
 
-    # Chiusura finale di sicurezza se l'ultimo utensile ha lavorato e non ha inserito M5/M9
+    # Chiusura finale di sicurezza per l'ultimo utensile del programma se non ancora fatto
     if righe_iso and ha_lavorato_questo_utensile:
         righe_iso.append(f"N{n_linea} M5")
         n_linea += 2
@@ -250,7 +252,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
 
         clean = re.sub(r'^N\d+\s*', '', riga)
         
-        # Intercetta M5 ed M9 nel codice ISO in arrivo e saltali per pulizia nella conversione inversa
+        # Ignora M5 ed M9 nel flusso in arrivo per pulizia
         if clean in ["M5", "M9"]:
             continue
 
