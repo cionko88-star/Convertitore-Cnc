@@ -25,7 +25,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     n_linea = 2
     utensile_attuale = 1
     curr_x, curr_y = 0.0, 0.0
-    in_lavorazione_attiva = False
+     ha_lavorato_questo_utensile = False
 
     idx = 0
     while idx < len(righe):
@@ -65,14 +65,14 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not clean:
             continue
 
-        # Cambio Utensile (M6): inserisce M5 ed M9 di chiusura del vecchio utensile se era attivo
+        # Cambio Utensile (M6): inserisce SEMPRE M5 ed M9 di chiusura del vecchio utensile
         if re.search(r'\bT\d+\s+M6\b', clean) or (re.search(r'\bT\d+\b', clean) and 'M6' in clean):
-            if in_lavorazione_attiva:
-                righe_iso.append(f"N{n_linea} M5")
-                n_linea += 2
-                righe_iso.append(f"N{n_linea} M9")
-                n_linea += 2
-                in_lavorazione_attiva = False
+            # Chiudiamo sempre l'utensile precedente prima di chiamare il nuovo T... M6
+            righe_iso.append(f"N{n_linea} M5")
+            n_linea += 2
+            righe_iso.append(f"N{n_linea} M9")
+            n_linea += 2
+            ha_lavorato_questo_utensile = False
 
             m_t = re.search(r'T(\d+)', clean)
             if m_t:
@@ -103,7 +103,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 righe_iso.append(f"N{n_linea} S{s_val} M3")
             
             n_linea += 2
-            in_lavorazione_attiva = True
+            ha_lavorato_questo_utensile = True
             continue
 
         # Se SELCA ha G41/G42 isolato
@@ -124,7 +124,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 
                 n_linea += 2
                 idx += 1
-                in_lavorazione_attiva = True
+                ha_lavorato_questo_utensile = True
                 continue
 
         # Se SELCA ha G40 isolato
@@ -141,7 +141,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 
                 n_linea += 2
                 idx += 1
-                in_lavorazione_attiva = True
+                ha_lavorato_questo_utensile = True
                 continue
 
         # CONVERSIONE ARCHI G02 / G03
@@ -164,7 +164,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 new_tokens.append(f"J{round(j_abs - curr_y, 3)}")
                 
             clean = f"{cmd_g} " + " ".join(new_tokens)
-            in_lavorazione_attiva = True
+            ha_lavorato_questo_utensile = True
 
         # Tracciamento coordinate
         m_x = re.search(r'X(-?\d+(\.\d+)?)', clean)
@@ -179,7 +179,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 clean_iso = "G99 " + clean_iso
             righe_iso.append(f"N{n_linea} {clean_iso}")
             n_linea += 2
-            in_lavorazione_attiva = True
+            ha_lavorato_questo_utensile = True
             continue
 
         if "M18" in clean or "M8" in clean:
@@ -190,9 +190,9 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         righe_iso.append(f"N{n_linea} {clean}")
         n_linea += 2
         if any(k in clean for k in ['X', 'Y', 'Z', 'G0', 'G1', 'G2', 'G3']):
-            in_lavorazione_attiva = True
+            ha_lavorato_questo_utensile = True
 
-    # Riaggiunge M5 ed M9 alla ultimissima riga del file per chiudere l'ultimo utensile
+    # Chiusura finale obbligatoria per l'ultimissimo utensile del programma
     if righe_iso:
         righe_iso.append(f"N{n_linea} M5")
         n_linea += 2
