@@ -25,7 +25,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     n_linea = 2
     utensile_attuale = 1
     curr_x, curr_y = 0.0, 0.0
-     ha_lavorato_questo_utensile = False
+    ha_lavorato_questo_utensile = False
 
     idx = 0
     while idx < len(righe):
@@ -67,7 +67,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
         # Cambio Utensile (M6): inserisce SEMPRE M5 ed M9 di chiusura del vecchio utensile
         if re.search(r'\bT\d+\s+M6\b', clean) or (re.search(r'\bT\d+\b', clean) and 'M6' in clean):
-            # Chiudiamo sempre l'utensile precedente prima di chiamare il nuovo T... M6
             righe_iso.append(f"N{n_linea} M5")
             n_linea += 2
             righe_iso.append(f"N{n_linea} M9")
