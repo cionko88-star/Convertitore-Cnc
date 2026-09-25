@@ -174,17 +174,21 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 continue
 
         if clean in ["M5", "M05"]:
-            righe_iso.append(f"N{n_linea} M9")
+            righe_iso.append(f"N{n_linea} M5")
             n_linea += 2
-            righe_iso.append(f"N{n_linea} {clean}")
+            righe_iso.append(f"N{n_linea} M9")
             n_linea += 2
             continue
 
         righe_iso.append(f"N{n_linea} {clean}")
         n_linea += 2
 
-    if righe_iso and "M9" not in righe_iso[-1]:
-        righe_iso.append(f"N{n_linea} M9")
+    if righe_iso:
+        if "M5" not in righe_iso[-1] and "M5" not in righe_iso[-2]:
+            righe_iso.append(f"N{n_linea} M5")
+            n_linea += 2
+        if "M9" not in righe_iso[-1]:
+            righe_iso.append(f"N{n_linea} M9")
 
     return "\n".join(righe_iso)
 
@@ -199,7 +203,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
     n_linea = 2
     utensile_attuale = 1
     primo_z_utensile = True
-    modalita_moto = "G00"  # Gestione della modalità modale (G00 / G01 / G02 / G03)
+    modalita_moto = "G00"
     curr_x, curr_y = 0.0, 0.0
 
     idx = 0
@@ -228,9 +232,19 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
 
         clean = re.sub(r'^N\d+\s*', '', riga)
 
-        if "M06" in clean:
+        # Prima di un nuovo cambio utensile (M6), aggiunge M5 ed M9 su blocchi separati
+        if "M06" in clean or "M6" in clean:
             m_t = re.search(r'T(\d+)', clean)
             if m_t:
+                # Controlla se M5 e M9 non sono già stati aggiunti subito prima
+                if not (len(righe_selca) >= 2 and "M5" in righe_selca[-2] and "M9" in righe_selca[-1]):
+                    if not (righe_selca and "M5" in righe_selca[-1]):
+                        righe_selca.append(f"N{n_linea} M5")
+                        n_linea += 2
+                    if not (righe_selca and "M9" in righe_selca[-1]):
+                        righe_selca.append(f"N{n_linea} M9")
+                        n_linea += 2
+
                 utensile_attuale = int(m_t.group(1))
                 primo_z_utensile = True
                 modalita_moto = "G00"
@@ -367,7 +381,6 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             righe_selca.append(f"N{n_linea} {clean_selca}")
             n_linea += 2
             
-            # Posizionamento XY SENZA G00 dopo il ciclo di foratura
             righe_selca.append(f"N{n_linea} X{curr_x:g} Y{curr_y:g}")
             n_linea += 2
             continue
@@ -384,18 +397,24 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             n_linea += 2
             continue
 
+        # Gestione esplicita di M5 / M5 ed M9
         if clean in ["M5", "M05"]:
-            righe_selca.append(f"N{n_linea} M9")
+            righe_selca.append(f"N{n_linea} M5")
             n_linea += 2
-            righe_selca.append(f"N{n_linea} {clean}")
+            righe_selca.append(f"N{n_linea} M9")
             n_linea += 2
             continue
 
         righe_selca.append(f"N{n_linea} {clean}")
         n_linea += 2
 
-    if righe_selca and "M9" not in righe_selca[-1]:
-        righe_selca.append(f"N{n_linea} M9")
+    # Aggiunta finale di M5 e M9 a fine programma se mancanti
+    if righe_selca:
+        if "M5" not in righe_selca[-1] and "M5" not in righe_selca[-2]:
+            righe_selca.append(f"N{n_linea} M5")
+            n_linea += 2
+        if "M9" not in righe_selca[-1]:
+            righe_selca.append(f"N{n_linea} M9")
 
     return "\n".join(righe_selca)
 
