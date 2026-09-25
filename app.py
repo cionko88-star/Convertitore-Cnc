@@ -8,7 +8,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     righe = codice_selca.strip().split('\n')
     righe_iso = []
     
-    # Tabella dati utensili
+    # Tabella dati utensili standard
     info_utensili = {
         1: {"s": 4400, "m_cool": "M51", "next_t": 2, "desc": "T1 - FRESA 3 INS. SPALL. RETTO - D.20"},
         2: {"s": 1300, "m_cool": "M8",  "next_t": 3, "desc": "T2 - FRESA 4TG. MET. DURO - D.16"},
@@ -25,7 +25,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     modo_movimento_corrente = None  
     attesa_g61 = False
 
-    # --- 1. INTESTAZIONE INIZIALE FISSA E PULITA ---
+    # --- 1. INTESTAZIONE INIZIALE COMPATTA E UNITA ---
     righe_iso.append("( T2 FRESA 4TG. MET. DURO - D.16 - INSERIRE RAGGIO)")
     righe_iso.append("(-------------------------------------------------------)")
     righe_iso.append("( T3 FRESA PASSO VAR. 4TG. MET. DURO FRAISA - D.12 - INSERIRE RAGGIO)")
@@ -38,7 +38,8 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     righe_iso.append("( T5 MASCHIO CIECO SENZA PUNTA - M6)")
     righe_iso.append("(-------------------------------------------------------)")
     righe_iso.append("")
-    righe_iso.append("N2 G00 G17 G40 G49 G80 G54 G90")
+    righe_iso.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
+    n_linea += 2
 
     idx = 0
     while idx < len(righe):
@@ -48,17 +49,15 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not riga_p:
             continue
 
-        # Salta intestazioni Selca tecniche
+        # Salta le righe iniziali e intermedie ridondanti o l'elenco utensili in cima al Selca
         if any(riga_p.startswith(k) for k in ["[CLIENTE:", "[DISEGNO:", "[DESCRIZIONE:", "[MATERIALE:", "[Data:", "[PROG:", "[MACCHINA:"]):
             continue
-
         if riga_p in ['N2 G17', 'O1']:
             continue
 
-        # FILTRO AGGIORNATO: Salta i blocchi di utensili duplicati e le relative linee tratteggiate nel mezzo del codice
+        # Filtra descrizioni utensili ripetute e linee tratteggiate vuote nel corpo
         is_tool_desc = any(k in riga_p for k in ["FRESA 3 INS", "FRESA 4TG", "FRESA PASSO", "PUNTA FORATA MET", "CENTRINO MINIMASTER", "MASCHIO CIECO SENZA PUNTA"])
         is_orphan_dash = riga_p.startswith('(') and all(c in '(- )' for c in riga_p) and not any(k in riga_p for k in ["SI ESEGUE", "STRINGERE", "APPOGGIO", "LO ZERO"])
-        
         if is_tool_desc or is_orphan_dash:
             continue
 
@@ -76,7 +75,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
         
-        # ELIMINAZIONE TOTALE DI G49 K
+        # Elimina G49 K se presente
         if re.search(r'\bG49\s+K', clean, re.IGNORECASE):
             continue
 
@@ -84,7 +83,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not clean:
             continue
 
-        # Cambio Utensile (T... M6)
+        # --- 2. GESTIONE CAMBIO UTENSILE (T... M6) ---
         if re.search(r'\bT\d+\b', clean) and ('M6' in clean or 'M06' in clean):
             if in_lavorazione_attiva:
                 righe_iso.append(f"N{n_linea} G64")
@@ -109,7 +108,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 modo_movimento_corrente = "G00"
                 continue
 
-        # Avvio Mandrino (S... M3)
+        # --- 3. AVVIO MANDRINO (S... M3) ---
         if re.search(r'\bS\d+\s+M3\b', clean):
             s_match = re.search(r'S(\d+)', clean)
             s_val = s_match.group(1) if s_match else ""
