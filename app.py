@@ -14,7 +14,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     righe_iso.append(f"(PROG: {nome_prog}.EIA)")
     righe_iso.append("(MACCHINA: MAZAK)")
     
-    # Parametri utensile per Mazak
     info_utensili = {
         1: {"s": 4400, "m_cool": "M51", "next_t": 2},
         2: {"s": 1300, "m_cool": "M8",  "next_t": 3},
@@ -36,7 +35,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not riga_p:
             continue
 
-        # Gestione Intestazioni SELCA
+        # Intestazioni e Commenti
         if riga_p.startswith("[CLIENTE:") or riga_p.startswith("[DISEGNO:") or riga_p.startswith("[DESCRIZIONE:") or riga_p.startswith("[MATERIALE:"):
             righe_iso.append(riga_p.replace('[', '(') + ')')
             continue
@@ -47,24 +46,21 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         elif riga_p.startswith("[PROG:") or riga_p.startswith("[MACCHINA:"):
             continue
 
-        # Commenti
         if riga_p.startswith('['):
             comm = riga_p.replace('[', '(')
-            if not comm.endswith(')'):
-                comm += ')'
+            if not comm.endswith(')'): comm += ')'
             if "N.B.= METTERE RAGGIO R.=0.3" in comm:
                 comm = "( N.B.= METTERE DIAMETRO D.=0.8 )"
             righe_iso.append(comm)
             continue
 
-        # Blocco di avvio ISO
         if riga_p in ['N2 G17', 'O1']:
             if "N2 G00 G17 G40 G49 G80 G54 G90" not in righe_iso:
                 righe_iso.append("N2 G00 G17 G40 G49 G80 G54 G90")
                 n_linea = 4
             continue
 
-        # Cambio Utensile T... M6
+        # Cambio Utensile
         if re.search(r'\bT\d+\s+M6\b', riga_p) or (re.search(r'\bT\d+\b', riga_p) and 'M6' in riga_p):
             m_t = re.search(r'T(\d+)', riga_p)
             if m_t:
@@ -81,7 +77,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 g61_attivo = False
                 continue
 
-        # Avvio Mandrino S... M3
+        # Avvio Mandrino
         if re.search(r'\bS\d+\s+M3\b', riga_p):
             s_match = re.search(r'S(\d+)', riga_p)
             s_val = s_match.group(1) if s_match else ""
@@ -100,34 +96,34 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
 
-        # Gestione G00
+        # COMPENSAZIONE RAGGIO: Gestione G42/G41 e inserimento G49 K3
+        if clean.startswith("G42") or clean.startswith("G41"):
+            righe_iso.append(f"N{n_linea} G49 K3")
+            n_linea += 2
+            # Raddoppia l'avanzamento da F400 a F800 per la Mazak
+            clean_mod = clean.replace("F400", "F800")
+            righe_iso.append(f"N{n_linea} {clean_mod}")
+            n_linea += 2
+            continue
+
+        # CICLI DI FORATURA (G81 / G84 / G80)
+        if "G81" in clean or "G84" in clean:
+            # Converte G99 G81... R... in G81... J...
+            clean_iso = clean.replace("G99 ", "").replace("R", "J")
+            righe_iso.append(f"N{n_linea} {clean_iso}")
+            n_linea += 2
+            continue
+
+        # Posizionamenti in G00 e svincoli Z3
+        if clean == "G00 Z3":
+            righe_iso.append(f"N{n_linea} G00 Z3 M18")
+            n_linea += 2
+            continue
+
         if clean.startswith("G00"):
-            clean = re.sub(r'\s*M18', '', clean)
             righe_iso.append(f"N{n_linea} {clean}")
             n_linea += 2
             continue
-
-        # Gestione G61.1 / G64
-        if ('G01' in clean or 'G02' in clean or 'G03' in clean) and not g61_attivo:
-            righe_iso.append(f"N{n_linea} G61.1")
-            n_linea += 2
-            g61_attivo = True
-
-        if 'G00' in clean and 'Z' in clean and g61_attivo:
-            righe_iso.append(f"N{n_linea} G64")
-            n_linea += 2
-            g61_attivo = False
-
-        # Preservazione e conversione comandi di compensazione raggio (G41, G42, G40, G49)
-        if any(cmd in clean for cmd in ['G41', 'G42', 'G40', 'G49']):
-            # Mantiene eventuale quota K o D associata (es. G49 K0)
-            righe_iso.append(f"N{n_linea} {clean}")
-            n_linea += 2
-            continue
-
-        # Modifica avanzamenti specifici utensili 2 e 3
-        if utensile_attuale in [2, 3]:
-            clean = clean.replace('F650', 'F250').replace('F800', 'F400')
 
         righe_iso.append(f"N{n_linea} {clean}")
         n_linea += 2
@@ -163,10 +159,23 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             n_linea = 4
             continue
 
-        if any(cmd in riga_p for cmd in ['G61.1', 'G64', 'G54', 'G90']):
+        clean = re.sub(r'^N\d+\s*', '', riga_p)
+
+        # Rimuove G49 K3 nella conversione verso SELCA
+        if "G49 K" in clean:
             continue
 
-        clean = re.sub(r'^N\d+\s*', '', riga_p)
+        # Inverte Cicli Foratura ISO -> SELCA (J -> R e aggiunge G99)
+        if "G81" in clean or "G84" in clean:
+            clean_selca = "G99 " + clean.replace("J", "R")
+            righe_selca.append(f"N{n_linea} {clean_selca}")
+            n_linea += 2
+            continue
+
+        if clean == "G00 Z3 M18":
+            righe_selca.append(f"N{n_linea} G00 Z3")
+            n_linea += 2
+            continue
 
         if "M06" in clean:
             m_t = re.search(r'T(\d+)', clean)
@@ -185,6 +194,9 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             righe_selca.append(f"N{n_linea} {s_str} M3")
             n_linea += 2
             continue
+
+        if clean.startswith("G42") or clean.startswith("G41"):
+            clean = clean.replace("F800", "F400")
 
         righe_selca.append(f"N{n_linea} {clean}")
         n_linea += 2
