@@ -25,7 +25,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     modo_movimento_corrente = None  
     attesa_g61 = False
 
-    # --- 1. INTESTAZIONE INIZIALE FISSA ---
+    # --- 1. INTESTAZIONE INIZIALE FISSA E PULITA ---
     righe_iso.append("( T2 FRESA 4TG. MET. DURO - D.16 - INSERIRE RAGGIO)")
     righe_iso.append("(-------------------------------------------------------)")
     righe_iso.append("( T3 FRESA PASSO VAR. 4TG. MET. DURO FRAISA - D.12 - INSERIRE RAGGIO)")
@@ -48,14 +48,19 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not riga_p:
             continue
 
-        # Salta intestazioni Selca tecniche
+        # Salta intestazioni Selca tecniche o blocchi di ripetizione utensili sparsi
         if any(riga_p.startswith(k) for k in ["[CLIENTE:", "[DISEGNO:", "[DESCRIZIONE:", "[MATERIALE:", "[Data:", "[PROG:", "[MACCHINA:"]):
             continue
 
         if riga_p in ['N2 G17', 'O1']:
             continue
 
-        # Gestione commenti descrittivi nel corpo
+        # Se incontriamo blocchi di commenti ripetuti degli utensili nel mezzo del codice, li saltiamo
+        if "FRESA" in riga_p or "PUNTA FORATA" in riga_p or "CENTRINO" in riga_p or "MASCHIO" in riga_p:
+            if riga_p.startswith('(') or riga_p.startswith('['):
+                continue
+
+        # Gestione commenti descrittivi validi nel corpo
         if riga_p.startswith('['):
             comm = riga_p.replace('[', '(')
             if not comm.endswith(')'): 
@@ -68,6 +73,11 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             continue
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
+        
+        # ELIMINAZIONE TOTALE DI G49 K (es. G49 K2, G49 K3)
+        if re.search(r'\bG49\s+K', clean, re.IGNORECASE):
+            continue
+
         clean = re.sub(r'\bM0?[59]\b', '', clean).strip()
         if not clean:
             continue
@@ -118,14 +128,14 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             in_lavorazione_attiva = True
             continue
 
-        # Intercettazione posizionamento Z in alto (prepara attivazione G61.1 sulla prossima discesa in lavorazione)
+        # Intercettazione posizionamento Z in alto
         if clean.startswith("Z") and modo_movimento_corrente == "G00":
             righe_iso.append(f"N{n_linea} {clean}")
             n_linea += 2
             attesa_g61 = True
             continue
 
-        # Gestione G41 / G42 diretta
+        # Gestione G41 / G42 diretta (senza passare per G49 K)
         if clean in ["G41", "G42"] and idx < len(righe):
             prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
             prossima = re.sub(r'\bM0?[59]\b', '', prossima).strip()
@@ -208,7 +218,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if m_x: curr_x = float(m_x.group(1))
         if m_y: curr_y = float(m_y.group(1))
 
-        # Inserimento controllato di G64 solo quando si alza l'utensile in rapido (fine lavorazione pezzo/quota)
+        # Inserimento controllato di G64 in rapido Z alto
         if clean.startswith("G00 Z") or (clean.startswith("Z") and modo_movimento_corrente == "G00"):
             if not any("G64" in r for r in righe_iso[-2:]):
                 righe_iso.append(f"N{n_linea} G64")
@@ -252,7 +262,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if any(k in clean for k in ['X', 'Y', 'Z', 'G0', 'G1', 'G2', 'G3']):
             in_lavorazione_attiva = True
 
-    # Chiusura finale pulita del programma ISO
+    # Chiusura finale pulita
     if righe_iso:
         if not any("G64" in r for r in righe_iso[-3:]):
             righe_iso.append(f"N{n_linea} G64")
