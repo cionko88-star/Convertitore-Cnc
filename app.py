@@ -338,7 +338,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             primo_z_utensile = False
             continue
 
-        # CICLI DI FORATURA E MASCHIATURA (ISO -> SELCA: Aggiunta automatica della prima posizione XY)
+        # CICLI DI FORATURA E MASCHIATURA (ISO -> SELCA: Aggiunta automatica di G00 + prima posizione XY)
         if any(ciclo in clean for ciclo in ["G81", "G84", "G85"]):
             m_x_iso = re.search(r'X(-?\d+(\.\d+)?)', clean)
             m_y_iso = re.search(r'Y(-?\d+(\.\d+)?)', clean)
@@ -354,7 +354,8 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             righe_selca.append(f"N{n_linea} {clean_selca}")
             n_linea += 2
             
-            righe_selca.append(f"N{n_linea} X{curr_x:g} Y{curr_y:g}")
+            # Aggiunto G00 prima delle coordinate XY
+            righe_selca.append(f"N{n_linea} G00 X{curr_x:g} Y{curr_y:g}")
             n_linea += 2
             continue
 
