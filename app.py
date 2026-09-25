@@ -8,7 +8,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     righe = codice_selca.strip().split('\n')
     righe_iso = []
     
-    # Tabella dati utensili basata sui riferimenti Mazak
     info_utensili = {
         1: {"s": 4400, "m_cool": "M51", "next_t": 2, "desc": "T1 - FRESA 3 INS. SPALL. RETTO - D.20"},
         2: {"s": 1300, "m_cool": "M8",  "next_t": 3, "desc": "T2 - FRESA 4TG. MET. DURO  - D.16"},
@@ -25,7 +24,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     modo_movimento_corrente = None  
     attesa_g61 = False
 
-    # --- 1. INTESTAZIONE INIZIALE FORMATO MAZAK ---
+    # --- 1. INTESTAZIONE UNICA MAZAK ---
     righe_iso.append(f"(PROG: {nome_prog}.EIA)")
     righe_iso.append("(MACCHINA: MAZAK)")
     righe_iso.append("(CLIENTE: TECHNE)")
@@ -45,11 +44,10 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     righe_iso.append("(LO ZERO Z E' SUL PIANO SUPERIORE DEL PEZZO)")
     righe_iso.append("(-------------------------------------------------------------------------------)")
     
-    # Elenco utensili pulito per l'intestazione
     for t_id in [1, 2, 3, 4, 6, 5]:
         desc = info_utensili[t_id]["desc"]
         if t_id == 6:
-            righe_iso.append(f"( T6 CENTRINO MINIMASTER SECO - D.12 - INSERIRE RAGGIO - UTILIZZA LA COMPENSAZIONE)")
+            righe_iso.append("( T6 CENTRINO MINIMASTER SECO - D.12 - INSERIRE RAGGIO - UTILIZZA LA COMPENSAZIONE)")
             righe_iso.append("( N.B.= METTERE DIAMETRO D.=0.8 )")
         elif t_id in [1, 2, 3]:
             righe_iso.append(f"( {desc} - INSERIRE RAGGIO)")
@@ -69,26 +67,23 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not riga_p:
             continue
 
-        if any(riga_p.startswith(k) for k in ["[CLIENTE:", "[DISEGNO:", "[DESCRIZIONE:", "[MATERIALE:", "[Data:", "[PROG:", "[MACCHINA:", "[PRIMA"]):
+        # Salta intestazioni e vecchi blocchi descrittivi ripetuti nel sorgente
+        if any(riga_p.startswith(k) for k in [
+            "[CLIENTE:", "[DISEGNO:", "[DESCRIZIONE:", "[MATERIALE:", "[Data:", "[PROG:", "[MACCHINA:", "[PRIMA",
+            "(STRINGERE", "(ALMENO", "(APPOGGIO", "(SI ESEGUE", "(LO ZERO", "( T1", "( T2", "( T3", "( T4", "( T6", "( T5", "( N.B.="
+        ]):
             continue
-        if riga_p in ['N2 G17', 'O1'] or riga_p.startswith('(') and all(c in '(- )' for c in riga_p):
-            continue
-
-        if riga_p.startswith('['):
-            comm = riga_p.replace('[', '(')
-            if not comm.endswith(')'): 
-                comm += ')'
-            if "N.B.= METTERE RAGGIO R.=0.3" in comm:
-                comm = "( N.B.= METTERE DIAMETRO D.=0.8 )"
-            
-            righe_iso.append("")
-            righe_iso.append(comm)
+        if riga_p in ['N2 G17', 'O1'] or (riga_p.startswith('(') and all(c in '(- )' for c in riga_p)):
             continue
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
         clean = re.sub(r'\bM0?[59]\b', '', clean).strip()
         if not clean:
             continue
+
+        # Pulizia sintassi coordinate appiccicate (es. X429Y345 -> X429 Y345)
+        clean = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', clean)
+        clean = re.sub(r'\s+', ' ', clean).strip()
 
         # --- GESTIONE CAMBIO UTENSILE ---
         if re.search(r'\bT\d+\b', clean) and ('M6' in clean or 'M06' in clean):
@@ -136,7 +131,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             in_lavorazione_attiva = True
             continue
 
-        # Cicli fissi G81 / G84 con supporto R3
+        # Cicli fissi G81 / G84
         if clean.startswith("G81") or clean.startswith("G84"):
             parts = clean.split()
             cmd_g = parts[0]
@@ -156,6 +151,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if clean in ["G41", "G42"] and idx < len(righe):
             prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
             prossima = re.sub(r'\bM0?[59]\b', '', prossima).strip()
+            prossima = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', prossima).strip()
             if any(k in prossima for k in ['X', 'Y']):
                 if attesa_g61:
                     righe_iso.append(f"N{n_linea} G61.1")
@@ -176,43 +172,13 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if clean == "G40" and idx < len(righe):
             prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
             prossima = re.sub(r'\bM0?[59]\b', '', prossima).strip()
+            prossima = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', prossima).strip()
             if any(k in prossima for k in ['X', 'Y']):
                 righe_iso.append(f"N{n_linea} G40 {prossima}")
                 n_linea += 2
                 idx += 1
                 in_lavorazione_attiva = True
                 continue
-
-        if clean.startswith("G02") or clean.startswith("G03") or clean.startswith("G2") or clean.startswith("G3"):
-            parts = clean.split()
-            cmd_g = parts[0].replace("G2", "G02").replace("G3", "G03")
-            tokens = parts[1:]
-            
-            i_abs, j_abs = None, None
-            new_tokens = []
-            
-            for t in tokens:
-                if t.startswith('I'): i_abs = float(t[1:])
-                elif t.startswith('J'): j_abs = float(t[1:])
-                else: new_tokens.append(t)
-            
-            if i_abs is not None:
-                new_tokens.append(f"I{round(i_abs - curr_x, 3)}")
-            if j_abs is not None:
-                new_tokens.append(f"J{round(j_abs - curr_y, 3)}")
-                
-            if attesa_g61:
-                righe_iso.append(f"N{n_linea} G61.1")
-                n_linea += 2
-                attesa_g61 = False
-
-            if modo_movimento_corrente != cmd_g:
-                clean = f"{cmd_g} " + " ".join(new_tokens)
-                modo_movimento_corrente = cmd_g
-            else:
-                clean = " ".join(new_tokens)
-
-            in_lavorazione_attiva = True
 
         m_x = re.search(r'X(-?\d+(\.\d+)?)', clean)
         m_y = re.search(r'Y(-?\d+(\.\d+)?)', clean)
@@ -368,7 +334,6 @@ def scarica():
     codice_sorgente = request.form.get('codice_sorgente', '')
     nome_programma = request.form.get('nome_programma', '200011974-A').strip()
     codice_convertito = traduci_selca_in_iso(codice_sorgente, nome_programma)
-    # Estensione pulita senza doppioni (.eia)
     return Response(codice_convertito, mimetype="text/plain", headers={"Content-disposition": f"attachment; filename={nome_programma}.eia"})
 
 if __name__ == '__main__':
