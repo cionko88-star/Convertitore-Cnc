@@ -4,19 +4,24 @@ import os
 
 app = Flask(__name__)
 
-def traduci_iso_in_selca(codice_iso: str) -> str:
+def traduci_iso_in_selca(codice_iso: str, nome_programma: str = "") -> str:
     righe = codice_iso.strip().split('\n')
     righe_selca = []
     
+    # Se l'utente ha inserito un nome programma personalizzato, lo mettiamo in testa
+    if nome_programma:
+        righe_selca.append(f"O{nome_programma.upper().lstrip('O')}")
+
     for riga in righe:
         riga_pulita = riga.strip().upper()
         if not riga_pulita or riga_pulita.startswith('(') or riga_pulita.startswith('%'):
             continue
 
         if riga_pulita.startswith('O'):
-            num_prog = re.search(r'O(\d+)', riga_pulita)
-            if num_prog:
-                righe_selca.append(f"O{num_prog.group(1)}")
+            if not nome_programma:  # Se l'utente non ha specificato un nome, manteniamo quello originale
+                num_prog = re.search(r'O(\d+)', riga_pulita)
+                if num_prog:
+                    righe_selca.append(f"O{num_prog.group(1)}")
             continue
 
         if 'T' in riga_pulita and 'M6' in riga_pulita:
@@ -52,19 +57,23 @@ def traduci_iso_in_selca(codice_iso: str) -> str:
 
     return "\n".join(righe_selca)
 
-def traduci_selca_in_iso(codice_selca: str) -> str:
+def traduci_selca_in_iso(codice_selca: str, nome_programma: str = "") -> str:
     righe = codice_selca.strip().split('\n')
     righe_iso = []
-    
+
+    if nome_programma:
+        righe_iso.append(f"O{nome_programma.upper().lstrip('O')}")
+
     for riga in righe:
         riga_pulita = riga.strip().upper()
         if not riga_pulita or riga_pulita.startswith('(') or riga_pulita.startswith('%'):
             continue
 
         if riga_pulita.startswith('O'):
-            num_prog = re.search(r'O(\d+)', riga_pulita)
-            if num_prog:
-                righe_iso.append(f"O{num_prog.group(1)}")
+            if not nome_programma:
+                num_prog = re.search(r'O(\d+)', riga_pulita)
+                if num_prog:
+                    righe_iso.append(f"O{num_prog.group(1)}")
             continue
 
         if 'G81' in riga_pulita:
@@ -101,8 +110,12 @@ HTML_TEMPLATE = """
         .header-title { font-size: 30px; font-weight: 800; color: #0f172a; margin-bottom: 12px; }
         .header-title span { color: #0d9488; }
         
-        .direction-bar { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; background: #fff; padding: 12px 20px; border-radius: 10px; border: 1px solid #e2e8f0; width: fit-content; }
+        .control-bar { display: flex; align-items: center; gap: 20px; margin-bottom: 15px; background: #fff; padding: 12px 20px; border-radius: 10px; border: 1px solid #e2e8f0; flex-wrap: wrap; }
         .direction-badge { font-weight: 700; font-size: 14px; color: #0d9488; }
+
+        .input-group { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #334155; }
+        .input-group input { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; font-weight: 600; width: 180px; outline: none; }
+        .input-group input:focus { border-color: #0d9488; }
 
         .workspace { display: flex; gap: 20px; margin-top: 10px; }
         .card { flex: 1; background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; }
@@ -138,11 +151,19 @@ HTML_TEMPLATE = """
         <form method="POST" action="/converti" id="mainForm">
             <input type="hidden" name="modalita" id="modalitaInput" value="{{ modalita or 'iso_to_selca' }}">
 
-            <div class="direction-bar">
-                <span>Modalità attuale:</span>
-                <span class="direction-badge" id="directionLabel">
-                    {% if modalita == 'selca_to_iso' %} SELCA ➔ ISO (.eia) {% else %} ISO ➔ SELCA (senza estensione) {% endif %}
-                </span>
+            <div class="control-bar">
+                <div>
+                    <span>Modalità attuale:</span>
+                    <span class="direction-badge" id="directionLabel">
+                        {% if modalita == 'selca_to_iso' %} SELCA ➔ ISO (.eia) {% else %} ISO ➔ SELCA (senza estensione) {% endif %}
+                    </span>
+                </div>
+
+                <div class="input-group">
+                    <label for="nome_programma">Nome Programma:</label>
+                    <input type="text" id="nome_programma" name="nome_programma" value="{{ nome_programma }}" placeholder="es. PEZZO_01 o O100">
+                </div>
+
                 <button type="submit" formaction="/scambia" class="btn btn-swap">🔄 Inverti Direzione</button>
             </div>
 
@@ -204,41 +225,45 @@ HTML_TEMPLATE = """
 
 @app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE, codice_sorgente="", codice_convertito="", modalita="iso_to_selca")
+    return render_template_string(HTML_TEMPLATE, codice_sorgente="", codice_convertito="", modalita="iso_to_selca", nome_programma="")
 
 @app.route('/converti', methods=['POST'])
 def converti():
     codice_sorgente = request.form.get('codice_sorgente', '')
     modalita = request.form.get('modalita', 'iso_to_selca')
+    nome_programma = request.form.get('nome_programma', '').strip()
     
     if modalita == 'selca_to_iso':
-        codice_convertito = traduci_selca_in_iso(codice_sorgente)
+        codice_convertito = traduci_selca_in_iso(codice_sorgente, nome_programma)
     else:
-        codice_convertito = traduci_iso_in_selca(codice_sorgente)
+        codice_convertito = traduci_iso_in_selca(codice_sorgente, nome_programma)
         
-    return render_template_string(HTML_TEMPLATE, codice_sorgente=codice_sorgente, codice_convertito=codice_convertito, modalita=modalita)
+    return render_template_string(HTML_TEMPLATE, codice_sorgente=codice_sorgente, codice_convertito=codice_convertito, modalita=modalita, nome_programma=nome_programma)
 
 @app.route('/scambia', methods=['POST'])
 def scambia():
     codice_sorgente = request.form.get('codice_sorgente', '')
     codice_convertito = request.form.get('codice_convertito', '')
     modalita = request.form.get('modalita', 'iso_to_selca')
+    nome_programma = request.form.get('nome_programma', '').strip()
     
     nuova_modalita = 'selca_to_iso' if modalita == 'iso_to_selca' else 'iso_to_selca'
     
-    return render_template_string(HTML_TEMPLATE, codice_sorgente=codice_convertito, codice_convertito=codice_sorgente, modalita=nuova_modalita)
+    return render_template_string(HTML_TEMPLATE, codice_sorgente=codice_convertito, codice_convertito=codice_sorgente, modalita=nuova_modalita, nome_programma=nome_programma)
 
 @app.route('/scarica', methods=['POST'])
 def scarica():
     codice_sorgente = request.form.get('codice_sorgente', '')
     modalita = request.form.get('modalita', 'iso_to_selca')
+    nome_programma = request.form.get('nome_programma', '').strip()
     
     if modalita == 'selca_to_iso':
-        codice_convertito = traduci_selca_in_iso(codice_sorgente)
-        nome_file = "PROGRAMMA_ISO.eia"
+        codice_convertito = traduci_selca_in_iso(codice_sorgente, nome_programma)
+        base_name = nome_programma if nome_programma else "PROGRAMMA_ISO"
+        nome_file = f"{base_name}.eia"
     else:
-        codice_convertito = traduci_iso_in_selca(codice_sorgente)
-        nome_file = "PROGRAMMA_SELCA"  # Senza estensione per SELCA
+        codice_convertito = traduci_iso_in_selca(codice_sorgente, nome_programma)
+        nome_file = nome_programma if nome_programma else "PROGRAMMA_SELCA"
         
     return Response(
         codice_convertito,
