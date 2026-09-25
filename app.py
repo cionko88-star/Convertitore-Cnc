@@ -4,21 +4,39 @@ import os
 
 app = Flask(__name__)
 
+def converti_commento_in_selca(linea: str) -> str:
+    """Converte i commenti da formato ISO (COMMENTO) a SELCA [COMMENTO]"""
+    # Se il commento usa parentesi tonde (ISO), convertilo in quadre [SELCA]
+    linea = re.sub(r'\((.*?)\)', r'[\1]', linea)
+    return linea
+
+def converti_commento_in_iso(linea: str) -> str:
+    """Converte i commenti da formato SELCA [COMMENTO] a ISO (COMMENTO)"""
+    # Sostituisce parentesi quadre ben formate [COMMENTO] -> (COMMENTO)
+    if '[' in linea and ']' in linea:
+        linea = re.sub(r'\[(.*?)\]', r'(\1)', linea)
+    # Se c'è solo '[' aperta e non chiusa, sostituisci '[' con '(' e aggiungi ')' in fondo
+    elif '[' in linea and ']' not in linea:
+        linea = linea.replace('[', '(', 1) + ')'
+    return linea
+
 def traduci_iso_in_selca(codice_iso: str, nome_programma: str = "") -> str:
     righe = codice_iso.strip().split('\n')
     righe_selca = []
     
-    # Se l'utente ha inserito un nome programma personalizzato, lo mettiamo in testa
     if nome_programma:
         righe_selca.append(f"O{nome_programma.upper().lstrip('O')}")
 
     for riga in righe:
         riga_pulita = riga.strip().upper()
-        if not riga_pulita or riga_pulita.startswith('(') or riga_pulita.startswith('%'):
+        if not riga_pulita or riga_pulita.startswith('%'):
             continue
 
+        # Gestione commenti isolati o a fine riga
+        riga_pulita = converti_commento_in_selca(riga_pulita)
+
         if riga_pulita.startswith('O'):
-            if not nome_programma:  # Se l'utente non ha specificato un nome, manteniamo quello originale
+            if not nome_programma:
                 num_prog = re.search(r'O(\d+)', riga_pulita)
                 if num_prog:
                     righe_selca.append(f"O{num_prog.group(1)}")
@@ -66,8 +84,11 @@ def traduci_selca_in_iso(codice_selca: str, nome_programma: str = "") -> str:
 
     for riga in righe:
         riga_pulita = riga.strip().upper()
-        if not riga_pulita or riga_pulita.startswith('(') or riga_pulita.startswith('%'):
+        if not riga_pulita or riga_pulita.startswith('%'):
             continue
+
+        # Gestione commenti isolati o a fine riga
+        riga_pulita = converti_commento_in_iso(riga_pulita)
 
         if riga_pulita.startswith('O'):
             if not nome_programma:
