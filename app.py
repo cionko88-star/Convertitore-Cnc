@@ -45,7 +45,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         elif riga_p.startswith("[PROG:") or riga_p.startswith("[MACCHINA:"):
             continue
 
-        # Gestione commenti / descrizioni utensile (chiusura mandrino/refrigerante solo se l'utensile precedente ha lavorato)
+        # Gestione commenti / descrizioni utensile (chiusura mandrino/refrigerante)
         if riga_p.startswith('['):
             if in_lavorazione_attiva:
                 righe_iso.append(f"N{n_linea} M5")
@@ -174,7 +174,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if m_x: curr_x = float(m_x.group(1))
         if m_y: curr_y = float(m_y.group(1))
 
-        # CICLI DI FORATURA/MASCHIATURA (es. G81, G84, G85) - RIMOSSO M5/M9 automatico qui in mezzo
+        # CICLI DI FORATURA/MASCHIATURA (es. G81, G84, G85)
         if any(ciclo in clean for ciclo in ["G81", "G84", "G85"]):
             clean_iso = re.sub(r'\bJ(\d+(\.\d+)?)', r'R\1', clean)
             if not clean_iso.startswith("G99"):
@@ -189,12 +189,8 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             if not clean:
                 continue
 
-        if clean in ["M5", "M05"]:
-            righe_iso.append(f"N{n_linea} M5")
-            n_linea += 2
-            righe_iso.append(f"N{n_linea} M9")
-            n_linea += 2
-            in_lavorazione_attiva = False
+        # Ignora M5/M9 presenti nel mezzo del programma se l'utensile sta ancora eseguendo altre lavorazioni
+        if clean in ["M5", "M05"] or clean in ["M9", "M09"]:
             continue
 
         righe_iso.append(f"N{n_linea} {clean}")
@@ -411,12 +407,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             n_linea += 2
             continue
 
-        if clean in ["M5", "M05"]:
-            righe_selca.append(f"N{n_linea} M5")
-            n_linea += 2
-            righe_selca.append(f"N{n_linea} M9")
-            n_linea += 2
-            in_lavorazione_attiva = False
+        if clean in ["M5", "M05"] or clean in ["M9", "M09"]:
             continue
 
         righe_selca.append(f"N{n_linea} {clean}")
