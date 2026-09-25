@@ -202,6 +202,8 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
     
     n_linea = 2
     utensile_attuale = 1
+    primo_utensile = True
+    m5_m9_inseriti_primo_utensile = False
     primo_z_utensile = True
     modalita_moto = "G00"
     curr_x, curr_y = 0.0, 0.0
@@ -214,38 +216,35 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
         if not riga or riga.startswith("(PROG:") or riga.startswith("(MACCHINA:"):
             continue
 
-        # Inserisce M5 e M9 PRIMA dei commenti del cambio utensile successivo
         clean_temp = re.sub(r'^N\d+\s*', '', riga)
-        if riga.startswith('(') or "M06" in clean_temp or "M6" in clean_temp:
-            # Verifica se siamo in corrispondenza di un commento/cambio utensile successivo
-            prossimi_comandi = [riga]
-            j = idx
-            is_tool_change = "M06" in clean_temp or "M6" in clean_temp
-            while j < len(righe):
-                r_next = righe[j].strip()
-                c_next = re.sub(r'^N\d+\s*', '', r_next)
-                if r_next.startswith('(') or not r_next:
-                    j += 1
-                    continue
-                if "M06" in c_next or "M6" in c_next:
-                    is_tool_change = True
-                break
-            
-            if is_tool_change:
-                # Arretra prima dei commenti accumulati recentemente prima dell'M6
+        is_tool_change = "M06" in clean_temp or "M6" in clean_temp
+
+        # Se incontriamo un commento o cambio utensile DOPO il primo utensile
+        if primo_utensile and not m5_m9_inseriti_primo_utensile:
+            # Verifichiamo se ci stiamo avvicinando al secondo cambio utensile
+            is_next_tool_change = is_tool_change
+            if riga.startswith('('):
+                j = idx
+                while j < len(righe):
+                    r_next = righe[j].strip()
+                    c_next = re.sub(r'^N\d+\s*', '', r_next)
+                    if r_next.startswith('(') or not r_next:
+                        j += 1
+                        continue
+                    if "M06" in c_next or "M6" in c_next:
+                        is_next_tool_change = True
+                    break
+
+            if is_next_tool_change:
+                # Arretriamo prima dei commenti accumulati subito prima del nuovo cambio utensile
                 i_insert = len(righe_selca)
                 while i_insert > 0 and (righe_selca[i_insert-1].startswith('[') or not righe_selca[i_insert-1]):
                     i_insert -= 1
                 
-                gia_m5_m9 = False
-                if i_insert >= 2 and "M5" in righe_selca[i_insert-2] and "M9" in righe_selca[i_insert-1]:
-                    gia_m5_m9 = True
-                elif i_insert >= 1 and ("M5" in righe_selca[i_insert-1] or "M9" in righe_selca[i_insert-1]):
-                    gia_m5_m9 = True
-                
-                if not gia_m5_m9:
-                    righe_selca.insert(i_insert, f"N{n_linea} M9")
-                    righe_selca.insert(i_insert, f"N{n_linea} M5")
+                righe_selca.insert(i_insert, f"N{n_linea} M9")
+                righe_selca.insert(i_insert, f"N{n_linea} M5")
+                m5_m9_inseriti_primo_utensile = True
+                primo_utensile = False
 
         if riga.startswith('('):
             comm = riga.replace('(', '[').replace(')', '')
@@ -431,20 +430,6 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
 
         righe_selca.append(f"N{n_linea} {clean}")
         n_linea += 2
-
-    # Aggiunta finale di M5 e M9 prima di eventuali commenti finali o a fine file
-    if righe_selca:
-        i_insert = len(righe_selca)
-        while i_insert > 0 and (righe_selca[i_insert-1].startswith('[') or not righe_selca[i_insert-1]):
-            i_insert -= 1
-            
-        gia_m5 = any("M5" in r for r in righe_selca[i_insert:]) or (i_insert > 0 and "M5" in righe_selca[i_insert-1])
-        gia_m9 = any("M9" in r for r in righe_selca[i_insert:]) or (i_insert > 0 and "M9" in righe_selca[i_insert-1])
-        
-        if not gia_m9:
-            righe_selca.insert(i_insert, f"N{n_linea} M9")
-        if not gia_m5:
-            righe_selca.insert(i_insert, f"N{n_linea} M5")
 
     # Rinumerazione finale ordinata di tutti i blocchi N
     righe_finali = []
