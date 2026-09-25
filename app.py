@@ -93,7 +93,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             n_linea += 2
             continue
 
-        # Se SELCA ha G41/G42 isolato e la riga successiva ha le coordinate, accorpa per ISO
+        # Se SELCA ha G41/G42 isolato
         if clean in ["G41", "G42"] and idx < len(righe):
             prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
             if any(k in prossima for k in ['X', 'Y']):
@@ -112,7 +112,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 idx += 1
                 continue
 
-        # Se SELCA ha G40 isolato e la riga successiva ha le coordinate
+        # Se SELCA ha G40 isolato
         if clean == "G40" and idx < len(righe):
             prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
             if any(k in prossima for k in ['X', 'Y']):
@@ -127,7 +127,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 idx += 1
                 continue
 
-        # CONVERSIONE ARCHI G02 / G03 (SELCA -> ISO: da Centro Assoluto ad Incrementale)
+        # CONVERSIONE ARCHI G02 / G03 (SELCA -> ISO: Assoluto -> Incrementale)
         if clean.startswith("G02") or clean.startswith("G03") or clean.startswith("G2") or clean.startswith("G3"):
             parts = clean.split()
             cmd_g = parts[0]
@@ -143,10 +143,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                     j_abs = float(t[1:])
                 else:
                     new_tokens.append(t)
-                    if t.startswith('X'): curr_x_next = float(t[1:])
-                    elif t.startswith('Y'): curr_y_next = float(t[1:])
             
-            # Calcolo incrementale
             if i_abs is not None:
                 i_inc = round(i_abs - curr_x, 3)
                 new_tokens.append(f"I{i_inc}")
@@ -162,8 +159,8 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if m_x: curr_x = float(m_x.group(1))
         if m_y: curr_y = float(m_y.group(1))
 
-        # CICLI DI FORATURA E MASCHIATURA
-        if "G81" in clean or "G84" in clean:
+        # CICLI DI FORATURA/MASCHIATURA (SELCA -> ISO)
+        if any(ciclo in clean for ciclo in ["G81", "G84", "G85"]):
             clean_iso = re.sub(r'\bJ(\d+(\.\d+)?)', r'R\1', clean)
             if not clean_iso.startswith("G99"):
                 clean_iso = "G99 " + clean_iso
@@ -244,7 +241,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
         if any(cmd in clean for cmd in ['G61.1', 'G64', 'G54', 'G90']):
             continue
 
-        # COMPENSAZIONE RAGGIO G41 / G42 (Separati in SELCA)
+        # COMPENSAZIONE RAGGIO G41 / G42
         if clean.startswith("G41") or clean.startswith("G42"):
             cmd_g = "G41" if "G41" in clean else "G42"
             rest_xy = clean.replace(cmd_g, "").strip()
@@ -268,7 +265,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
                 n_linea += 2
             continue
 
-        # ANNULLAMENTO COMPENSAZIONE G40 (Separato in SELCA)
+        # ANNULLAMENTO COMPENSAZIONE G40
         if "G40" in clean:
             rest_xy = clean.replace("G40", "").strip()
             
@@ -292,7 +289,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             n_linea += 2
             continue
 
-        # CONVERSIONE ARCHI G02 / G03 (ISO -> SELCA: da Incrementale a Centro Assoluto)
+        # CONVERSIONE ARCHI G02 / G03 (ISO -> SELCA: Incrementale -> Assoluto)
         if clean.startswith("G02") or clean.startswith("G03") or clean.startswith("G2") or clean.startswith("G3"):
             parts = clean.split()
             cmd_g = parts[0]
@@ -313,7 +310,6 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
                     if t.startswith('X'): next_x = float(t[1:])
                     elif t.startswith('Y'): next_y = float(t[1:])
             
-            # Calcolo coordinate assolute centro arco per SELCA
             if i_inc is not None:
                 i_abs = round(curr_x + i_inc, 3)
                 new_tokens.append(f"I{i_abs:g}")
@@ -332,7 +328,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
         if m_y and not (clean.startswith("G02") or clean.startswith("G03") or clean.startswith("G2") or clean.startswith("G3")):
             curr_y = float(m_y.group(1))
 
-        # PRIMO POSIZIONAMENTO IN Z (Aggiunge G00 se manca e inserisce M18/M8)
+        # PRIMO POSIZIONAMENTO IN Z
         if primo_z_utensile and re.search(r'\bZ-?\d+(\.\d+)?\b', clean):
             codice_acqua = "M18" if utensile_attuale in [1, 4] else "M8"
             if not clean.startswith("G00") and not clean.startswith("G01"):
@@ -342,17 +338,28 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             primo_z_utensile = False
             continue
 
-        # Riposizionamento in rapido XY senza Z: Assicura G00 in testa se è un rapido
-        if re.match(r'^X-?\d+.*Y-?\d+', clean) and not clean.startswith("G01") and not clean.startswith("G02") and not clean.startswith("G03"):
-            clean = "G00 " + clean
-
-        # CICLI DI FORATURA E MASCHIATURA (ISO -> SELCA)
-        if "G81" in clean or "G84" in clean:
+        # CICLI DI FORATURA E MASCHIATURA (ISO -> SELCA: Aggiunta automatica della prima posizione XY)
+        if any(ciclo in clean for ciclo in ["G81", "G84", "G85"]):
+            m_x_iso = re.search(r'X(-?\d+(\.\d+)?)', clean)
+            m_y_iso = re.search(r'Y(-?\d+(\.\d+)?)', clean)
+            
+            if m_x_iso: curr_x = float(m_x_iso.group(1))
+            if m_y_iso: curr_y = float(m_y_iso.group(1))
+            
             clean_selca = clean.replace("G99 ", "").replace("G99", "").strip()
+            clean_selca = re.sub(r'\b[XY]-?\d+(\.\d+)?', '', clean_selca).strip()
+            clean_selca = re.sub(r'\s+', ' ', clean_selca)
             clean_selca = re.sub(r'\bR(\d+(\.\d+)?)', r'J\1', clean_selca)
+            
             righe_selca.append(f"N{n_linea} {clean_selca}")
             n_linea += 2
+            
+            righe_selca.append(f"N{n_linea} X{curr_x:g} Y{curr_y:g}")
+            n_linea += 2
             continue
+
+        if re.match(r'^X-?\d+.*Y-?\d+', clean) and not clean.startswith("G01") and not clean.startswith("G02") and not clean.startswith("G03"):
+            clean = "G00 " + clean
 
         if "S" in clean and "M3" in clean:
             m_s = re.search(r'S\d+', clean)
@@ -461,3 +468,50 @@ HTML_TEMPLATE = """
     </script>
 </body>
 </html>
+"""
+
+@app.route('/')
+def index():
+    return render_template_string(HTML_TEMPLATE, codice_sorgente="", codice_convertito="", modalita="selca_to_iso", nome_programma="200011974-A")
+
+@app.route('/converti', methods=['POST'])
+def converti():
+    codice_sorgente = request.form.get('codice_sorgente', '')
+    modalita = request.form.get('modalita', 'selca_to_iso')
+    nome_programma = request.form.get('nome_programma', '200011974-A').strip()
+    
+    if modalita == 'selca_to_iso':
+        codice_convertito = traduci_selca_in_iso(codice_sorgente, nome_programma)
+    else:
+        codice_convertito = traduci_iso_in_selca(codice_sorgente, nome_programma)
+        
+    return render_template_string(HTML_TEMPLATE, codice_sorgente=codice_sorgente, codice_convertito=codice_convertito, modalita=modalita, nome_programma=nome_programma)
+
+@app.route('/scambia', methods=['POST'])
+def scambia():
+    codice_sorgente = request.form.get('codice_sorgente', '')
+    codice_convertito = request.form.get('codice_convertito', '')
+    modalita = request.form.get('modalita', 'selca_to_iso')
+    nome_programma = request.form.get('nome_programma', '200011974-A').strip()
+    
+    nuova_modalita = 'iso_to_selca' if modalita == 'selca_to_iso' else 'selca_to_iso'
+    return render_template_string(HTML_TEMPLATE, codice_sorgente=codice_convertito, codice_convertito=codice_sorgente, modalita=nuova_modalita, nome_programma=nome_programma)
+
+@app.route('/scarica', methods=['POST'])
+def scarica():
+    codice_sorgente = request.form.get('codice_sorgente', '')
+    modalita = request.form.get('modalita', 'selca_to_iso')
+    nome_programma = request.form.get('nome_programma', '200011974-A').strip()
+    
+    if modalita == 'selca_to_iso':
+        codice_convertito = traduci_selca_in_iso(codice_sorgente, nome_programma)
+        nome_file = f"{nome_programma}.EIA.eia"
+    else:
+        codice_convertito = traduci_iso_in_selca(codice_sorgente, nome_programma)
+        nome_file = nome_programma
+        
+    return Response(codice_convertito, mimetype="text/plain", headers={"Content-disposition": f"attachment; filename={nome_file}"})
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
