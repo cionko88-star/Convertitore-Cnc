@@ -121,35 +121,34 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             resto = re.sub(r'J\d+', 'R3', resto)
             clean = f"G99 {cmd_g} {resto}"
 
-        # Verifica se è un movimento con avanzamento (F) o Z negativo di lavoro
-        is_z_lavoro = ("Z-" in clean and "F" in clean) or ("Z-" in clean and modo_movimento_corrente == "G01")
+        # Riconoscimento se è un movimento di lavoro (es. Z- con F o G01 esplicito)
+        is_lavoro = clean.startswith("G01") or clean.startswith("G1 ") or ("Z-" in clean and "F" in clean) or (modo_movimento_corrente == "G01" and ("Z-" in clean or "X" in clean or "Y" in clean))
         is_z_rapido = False
 
         if clean.startswith("G00") or clean.startswith("G0 "):
             modo_movimento_corrente = "G00"
             if "Z" in clean and not "Z-" in clean:
                 is_z_rapido = True
-        elif clean.startswith("G01") or clean.startswith("G1 "):
+        elif is_lavoro:
+            if modo_movimento_corrente != "G01":
+                # Se l'ultimo comando inserito era G64, lo rimuoviamo prima di mettere G61.1
+                if righe_elaborate and righe_elaborate[-1].endswith("G64"):
+                    righe_elaborate.pop()
+                    n_linea -= 2  # Riallinea il contatore riga
+                
+                righe_elaborate.append(f"N{n_linea} G61.1")
+                n_linea += 2
+                
             modo_movimento_corrente = "G01"
-            righe_elaborate.append(f"N{n_linea} G61.1")
-            n_linea += 2
             clean = re.sub(r'^G0?1\s*', '', clean)
+            clean = f"G01 {clean}"
         else:
-            # Controllo se contiene coordinate e definisce il movimento
             if any(k in clean for k in ['X', 'Y', 'Z']) and not any(g in clean for g in ['G0', 'G1', 'G2', 'G3', 'G40', 'G41', 'G42', 'G81', 'G84']):
-                is_lavoro = "F" in clean or "Z-" in clean or modo_movimento_corrente == "G01"
-                atteso_g = "G01" if is_lavoro else "G00"
-                
-                if atteso_g == "G01" and modo_movimento_corrente != "G01":
-                    righe_elaborate.append(f"N{n_linea} G61.1")
-                    n_linea += 2
-                
-                modo_movimento_corrente = atteso_g
-                
-                if atteso_g == "G01":
-                    clean = f"G01 {clean}"
-                elif "Z" in clean and not "Z-" in clean:
+                if "Z" in clean and not "Z-" in clean:
                     is_z_rapido = True
+                    modo_movimento_corrente = "G00"
+                else:
+                    modo_movimento_corrente = "G00"
 
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
