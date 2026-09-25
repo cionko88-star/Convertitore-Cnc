@@ -50,9 +50,9 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if riga_p.startswith('['):
             is_smussi_cave = "SMUSSI CAVE" in riga_p
             if in_lavorazione_attiva and not is_smussi_cave:
-                righe_iso.append(f"N{n_linea} M5")
+                righe_iso.append(f"N{n_linea} M9")  # M9 prima di M5
                 n_linea += 2
-                righe_iso.append(f"N{n_linea} M9")
+                righe_iso.append(f"N{n_linea} M5")  # M5 dopo M9
                 n_linea += 2
                 in_lavorazione_attiva = False
                 modo_movimento_corrente = None
@@ -79,9 +79,9 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         # Cambio Utensile
         if re.search(r'\bT\d+\s+M6\b', clean) or (re.search(r'\bT\d+\b', clean) and 'M6' in clean):
             if in_lavorazione_attiva:
-                righe_iso.append(f"N{n_linea} M5")
+                righe_iso.append(f"N{n_linea} M9")  # M9 prima di M5
                 n_linea += 2
-                righe_iso.append(f"N{n_linea} M9")
+                righe_iso.append(f"N{n_linea} M5")  # M5 dopo M9
                 n_linea += 2
                 in_lavorazione_attiva = False
                 modo_movimento_corrente = None
@@ -132,7 +132,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                     n_linea += 2
                 prossima_mod = prossima.replace("F400", "F800")
                 
-                # Gestione modale G01 con compensazione
                 if modo_movimento_corrente != "G01":
                     righe_iso.append(f"N{n_linea} {clean} G01 {prossima_mod}")
                     modo_movimento_corrente = "G01"
@@ -185,7 +184,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             if j_abs is not None:
                 new_tokens.append(f"J{round(j_abs - curr_y, 3)}")
                 
-            # Stampa G02/G03 solo se diverso dallo stato corrente
             if modo_movimento_corrente != cmd_g:
                 clean = f"{cmd_g} " + " ".join(new_tokens)
                 modo_movimento_corrente = cmd_g
@@ -216,12 +214,10 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             modo_movimento_corrente = "G00"
         elif clean.startswith("G01") or clean.startswith("G1 "):
             if modo_movimento_corrente == "G01":
-                # Se eravamo già in G01, rimuoviamo la ripetizione superflua del comando
                 clean = re.sub(r'^G0?1\s*', '', clean)
             else:
                 modo_movimento_corrente = "G01"
         else:
-            # Se la riga contiene coordinate ma nessun G esplicito
             has_coord = any(k in clean for k in ['X', 'Y', 'Z'])
             if has_coord:
                 is_lavoro = "F" in clean or in_lavorazione_attiva
@@ -230,7 +226,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 if atteso_g != modo_movimento_corrente:
                     clean = f"{atteso_g} {clean}"
                     modo_movimento_corrente = atteso_g
-                # Se atteso_g == modo_movimento_corrente, non aggiungiamo nulla (resta implicito/modale)
 
         if "M18" in clean or "M8" in clean:
             clean = re.sub(r'\bM18\b|\bM8\b', '', clean).strip()
@@ -243,11 +238,11 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             in_lavorazione_attiva = True
 
     if righe_iso:
-        if "M5" not in righe_iso[-1] and "M5" not in righe_iso[-2]:
-            righe_iso.append(f"N{n_linea} M5")
+        if "M9" not in righe_iso[-1] and "M9" not in righe_iso[-2]:
+            righe_iso.append(f"N{n_linea} M9")  # M9 prima
             n_linea += 2
-        if "M9" not in righe_iso[-1]:
-            righe_iso.append(f"N{n_linea} M9")
+        if "M5" not in righe_iso[-1]:
+            righe_iso.append(f"N{n_linea} M5")  # M5 dopo
 
     return "\n".join(righe_iso)
 
@@ -277,9 +272,9 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
         if riga.startswith('('):
             is_smussi_cave = "SMUSSI CAVE" in riga
             if in_lavorazione_attiva and not is_smussi_cave:
-                righe_selca.append(f"N{n_linea} M5")
+                righe_selca.append(f"N{n_linea} M9")  # M9 prima di M5
                 n_linea += 2
-                righe_selca.append(f"N{n_linea} M9")
+                righe_selca.append(f"N{n_linea} M5")  # M5 dopo M9
                 n_linea += 2
                 in_lavorazione_attiva = False
 
@@ -305,9 +300,9 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
 
         if "M06" in clean or "M6" in clean:
             if in_lavorazione_attiva:
-                righe_selca.append(f"N{n_linea} M5")
+                righe_selca.append(f"N{n_linea} M9")  # M9 prima di M5
                 n_linea += 2
-                righe_selca.append(f"N{n_linea} M9")
+                righe_selca.append(f"N{n_linea} M5")  # M5 dopo M9
                 n_linea += 2
                 in_lavorazione_attiva = False
 
