@@ -214,6 +214,39 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
         if not riga or riga.startswith("(PROG:") or riga.startswith("(MACCHINA:"):
             continue
 
+        # Inserisce M5 e M9 PRIMA dei commenti del cambio utensile successivo
+        clean_temp = re.sub(r'^N\d+\s*', '', riga)
+        if riga.startswith('(') or "M06" in clean_temp or "M6" in clean_temp:
+            # Verifica se siamo in corrispondenza di un commento/cambio utensile successivo
+            prossimi_comandi = [riga]
+            j = idx
+            is_tool_change = "M06" in clean_temp or "M6" in clean_temp
+            while j < len(righe):
+                r_next = righe[j].strip()
+                c_next = re.sub(r'^N\d+\s*', '', r_next)
+                if r_next.startswith('(') or not r_next:
+                    j += 1
+                    continue
+                if "M06" in c_next or "M6" in c_next:
+                    is_tool_change = True
+                break
+            
+            if is_tool_change:
+                # Arretra prima dei commenti accumulati recentemente prima dell'M6
+                i_insert = len(righe_selca)
+                while i_insert > 0 and (righe_selca[i_insert-1].startswith('[') or not righe_selca[i_insert-1]):
+                    i_insert -= 1
+                
+                gia_m5_m9 = False
+                if i_insert >= 2 and "M5" in righe_selca[i_insert-2] and "M9" in righe_selca[i_insert-1]:
+                    gia_m5_m9 = True
+                elif i_insert >= 1 and ("M5" in righe_selca[i_insert-1] or "M9" in righe_selca[i_insert-1]):
+                    gia_m5_m9 = True
+                
+                if not gia_m5_m9:
+                    righe_selca.insert(i_insert, f"N{n_linea} M9")
+                    righe_selca.insert(i_insert, f"N{n_linea} M5")
+
         if riga.startswith('('):
             comm = riga.replace('(', '[').replace(')', '')
             if "CONVERTITO PER MAZAK" in comm:
@@ -232,19 +265,10 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
 
         clean = re.sub(r'^N\d+\s*', '', riga)
 
-        # Prima di un nuovo cambio utensile (M6), aggiunge M5 ed M9 su blocchi separati
+        # Cambio utensile M6
         if "M06" in clean or "M6" in clean:
             m_t = re.search(r'T(\d+)', clean)
             if m_t:
-                # Controlla se M5 e M9 non sono già stati aggiunti subito prima
-                if not (len(righe_selca) >= 2 and "M5" in righe_selca[-2] and "M9" in righe_selca[-1]):
-                    if not (righe_selca and "M5" in righe_selca[-1]):
-                        righe_selca.append(f"N{n_linea} M5")
-                        n_linea += 2
-                    if not (righe_selca and "M9" in righe_selca[-1]):
-                        righe_selca.append(f"N{n_linea} M9")
-                        n_linea += 2
-
                 utensile_attuale = int(m_t.group(1))
                 primo_z_utensile = True
                 modalita_moto = "G00"
@@ -397,7 +421,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             n_linea += 2
             continue
 
-        # Gestione esplicita di M5 / M5 ed M9
+        # Gestione esplicita di M5
         if clean in ["M5", "M05"]:
             righe_selca.append(f"N{n_linea} M5")
             n_linea += 2
@@ -408,15 +432,33 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
         righe_selca.append(f"N{n_linea} {clean}")
         n_linea += 2
 
-    # Aggiunta finale di M5 e M9 a fine programma se mancanti
+    # Aggiunta finale di M5 e M9 prima di eventuali commenti finali o a fine file
     if righe_selca:
-        if "M5" not in righe_selca[-1] and "M5" not in righe_selca[-2]:
-            righe_selca.append(f"N{n_linea} M5")
-            n_linea += 2
-        if "M9" not in righe_selca[-1]:
-            righe_selca.append(f"N{n_linea} M9")
+        i_insert = len(righe_selca)
+        while i_insert > 0 and (righe_selca[i_insert-1].startswith('[') or not righe_selca[i_insert-1]):
+            i_insert -= 1
+            
+        gia_m5 = any("M5" in r for r in righe_selca[i_insert:]) or (i_insert > 0 and "M5" in righe_selca[i_insert-1])
+        gia_m9 = any("M9" in r for r in righe_selca[i_insert:]) or (i_insert > 0 and "M9" in righe_selca[i_insert-1])
+        
+        if not gia_m9:
+            righe_selca.insert(i_insert, f"N{n_linea} M9")
+        if not gia_m5:
+            righe_selca.insert(i_insert, f"N{n_linea} M5")
 
-    return "\n".join(righe_selca)
+    # Rinumerazione finale ordinata di tutti i blocchi N
+    righe_finali = []
+    curr_n = 2
+    for r in righe_selca:
+        if r.startswith('N') and ' ' in r:
+            parti = r.split(' ', 1)
+            if parti[0][1:].isdigit():
+                righe_finali.append(f"N{curr_n} {parti[1]}")
+                curr_n += 2
+                continue
+        righe_finali.append(r)
+
+    return "\n".join(righe_finali)
 
 
 HTML_TEMPLATE = """
