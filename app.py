@@ -5,19 +5,36 @@ import os
 app = Flask(__name__)
 
 def converti_selca_a_iso(testo_selca: str) -> str:
-    righe = testo_selca.strip().split('\n')
-    righe_iso = []
+    righe_greffe = testo_selca.strip().split('\n')
+    righe_elaborate = []
     
+    # 1. Parsing preliminare per estrarre gli utensili in ordine e associarli alle descrizioni
+    utensili_info = [] # Lista di tuple: (num_utensile, descrizione_testo)
+    for riga in righe_greffe:
+        riga_clean = riga.strip()
+        # Cerca pattern tipo T1 M6 [ Descrizione ] oppure T1 M6 ( Descrizione )
+        match_t = re.search(r'T(\d+)\s+M6\b\s*[\(\[]\s*(.*?)\s*[\)\]]?', riga_clean, re.IGNORECASE)
+        if match_t:
+            t_num = match_t.group(1)
+            t_desc = match_t.group(2).strip()
+            utensili_info.append((t_num, t_desc))
+
+    # Estrae la sequenza di tutti i numeri utensile trovati nel programma
+    t_sequenza = [t[0] for t in utensili_info]
+    
+    idx_utensile_corrente = 0
     n_linea = 2
     modo_movimento_corrente = None
     
-    for riga in righe:
-        riga_grezza = riga.strip()
+    i = 0
+    while i < len(righe_greffe):
+        riga_grezza = righe_greffe[i].strip()
+        i += 1
         
         if not riga_grezza:
             continue
             
-        # Gestione righe che sono PURAMENTE commenti (iniziano con [ o ()
+        # Gestione righe che sono PURAMENTE commenti (es. ( SGROSSATURA... ))
         if riga_grezza.startswith('[') or riga_grezza.startswith('('):
             commento = riga_grezza
             if commento.startswith('['):
@@ -25,20 +42,83 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             commento = commento.replace('[', '(').replace(']', ')')
             if not commento.endswith(')'):
                 commento += ')'
-            righe_iso.append(commento)
+            righe_elaborate.append(commento)
             continue
             
-        # Rimuove il vecchio numero di blocco se presente
+        # Rimuove il vecchio numero di blocco se presente (es. N4, N6...)
         clean = re.sub(r'^N\d+\s*', '', riga_grezza)
         if not clean:
             continue
             
-        # Gestione commenti inline (es. T1 M6 [ FRESA... -> T1 M6 ( FRESA...))
+        # Intercetta il cambio utensile es. T1 M6 [ FRESA ... ] o simili
+        match_cambio = re.search(r'T(\d+)\s+M6\b', clean, re.IGNORECASE)
+        if match_cambio:
+            t_num = match_cambio.group(1)
+            
+            # Trova la descrizione corrispondente
+            descrizione = ""
+            for item in utensili_info:
+                if item[0] == t_num:
+                    descrizione = item[1]
+                    break
+            if not descrizione:
+                # Fallback se la descrizione era dentro la stessa riga ma non intercettata prima
+                m_inline = re.search(r'[\(\[]\s*(.*?)\s*[\)\]]', clean)
+                descrizione = m_inline.group(1).strip() if m_inline else ""
+
+            # Determina il prossimo utensile per il pre-caricamento (M51)
+            prossimo_t = ""
+            try:
+                current_idx_in_seq = t_sequenza.index(t_num)
+                if current_idx_in_seq + 1 < len(t_sequenza):
+                    prossimo_t = t_sequenza[current_idx_in_seq + 1]
+            except ValueError:
+                pass
+
+            # Genera i blocchi strutturati richiesti
+            # 1. Blocco cambio utensile principale
+            righe_elaborate.append(f"N{n_linea} T{t_num} M06 M5 M9 ( T{t_num} - {descrizione} )")
+            n_linea += 2
+            
+            # 2. Blocco sicurezza e zero pezzo
+            righe_elaborate.append(f"N{n_linea} G00 G90 G54")
+            n_linea += 2
+            
+            # 3. Blocco velocità e pre-caricamento successivo (se esiste)
+            # Cerchiamo eventuale S nel blocco originale o nelle righe successive immediate
+            s_val = "S4400" # Default o cerca nel testo
+            m_s = re.search(r'S(\d+)', clean, re.IGNORECASE)
+            if m_s:
+                s_val = f"S{m_s.group(1)}"
+            elif i < len(righe_greffe):
+                m_s_next = re.search(r'S(\d+)', righe_greffe[i], re.IGNORECASE)
+                if m_s_next:
+                    s_val = f"S{m_s_next.group(1)}"
+                    i += 1 # Salva la riga S già consumata
+
+            if prossimo_t:
+                righe_elaborate.append(f"N{n_linea} {s_val} M3 T{prossimo_t} M51")
+            else:
+                righe_elaborate.append(f"N{n_linea} {s_val} M3")
+            n_linea += 2
+            
+            continue
+
+        # Gestione riga con S e M3 isolata (se non gestita dal blocco sopra)
+        if clean.startswith("S") and "M3" in clean:
+            righe_elaborate.append(f"N{n_linea} {clean}")
+            n_linea += 2
+            # Subito dopo inseriamo G61.1 se siamo all'avvio del pezzo
+            righe_elaborate.append(f"N{n_linea} G61.1")
+            n_linea += 2
+            continue
+
+        # Gestione commenti inline generici
         if '[' in clean or ']' in clean:
             clean = clean.replace('[', '(').replace(']', ')')
             if not clean.endswith(')'):
                 clean += ')'
-            righe_iso.append(f"N{n_linea} {clean}")
+            righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             continue
             
@@ -46,6 +126,13 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         clean = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', clean)
         clean = re.sub(r'\s+', ' ', clean).strip()
         
+        # Gestione Z pulita se richiesta (es. Z3)
+        if clean == "G00 Z3 M18" or clean == "G0 Z3 M18":
+            clean = "Z3"
+        elif clean.startswith("G00 Z") or clean.startswith("G0 Z"):
+            # Se vuoi accorciare i posizionamenti Z isolati in sicurezza
+            pass
+
         # Gestione cicli fissi
         if clean.startswith("G81") or clean.startswith("G84"):
             parts = clean.split()
@@ -70,10 +157,10 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                     clean = f"{atteso_g} {clean}"
                     modo_movimento_corrente = atteso_g
 
-        righe_iso.append(f"N{n_linea} {clean}")
+        righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
         
-    return "\n".join(righe_iso)
+    return "\n".join(righe_elaborate)
 
 
 HTML_TEMPLATE = """
