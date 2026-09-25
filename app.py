@@ -10,7 +10,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     righe_iso = []
     data_oggi = datetime.now().strftime("%d-%m-%Y")
     
-    # Intestazione ISO
     righe_iso.append(f"(PROG: {nome_prog}.EIA)")
     righe_iso.append("(MACCHINA: MAZAK)")
     
@@ -25,6 +24,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
     n_linea = 2
     utensile_attuale = 1
+    primo_z_utensile = True
 
     idx = 0
     while idx < len(righe):
@@ -34,7 +34,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not riga_p:
             continue
 
-        # Commenti e Intestazioni
         if riga_p.startswith("[CLIENTE:") or riga_p.startswith("[DISEGNO:") or riga_p.startswith("[DESCRIZIONE:") or riga_p.startswith("[MATERIALE:"):
             righe_iso.append(riga_p.replace('[', '(') + ')')
             continue
@@ -64,6 +63,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             m_t = re.search(r'T(\d+)', riga_p)
             if m_t:
                 utensile_attuale = int(m_t.group(1))
+                primo_z_utensile = True
                 comm = ""
                 if '[' in riga_p:
                     comm = " " + riga_p[riga_p.index('['):].replace('[', '(')
@@ -75,7 +75,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 n_linea += 2
                 continue
 
-        # Avvio Mandrino + Adduzione Refrigerante (M51 / M8)
+        # Avvio Mandrino
         if re.search(r'\bS\d+\s+M3\b', riga_p):
             s_match = re.search(r'S(\d+)', riga_p)
             s_val = s_match.group(1) if s_match else ""
@@ -105,7 +105,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             continue
 
         # CICLI DI FORATURA E MASCHIATURA (SELCA -> ISO)
-        # Converti J3 in R3 e aggiungi G99 in testa al ciclo
         if "G81" in clean or "G84" in clean:
             clean_iso = re.sub(r'\bJ(\d+(\.\d+)?)', r'R\1', clean)
             if not clean_iso.startswith("G99"):
@@ -114,12 +113,26 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             n_linea += 2
             continue
 
-        # Rimuove M18 specifico di SELCA se presente su un blocco G00
-        if "M18" in clean:
-            clean = clean.replace(" M18", "").replace("M18", "").strip()
+        # Pulizia M18 e M8 generici sulle righe normali
+        if "M18" in clean or "M8" in clean:
+            clean = re.sub(r'\bM18\b|\bM8\b', '', clean).strip()
+            if not clean:
+                continue
+
+        # Spegnimento M9 a fine operazione / svincolo
+        if clean == "M5":
+            righe_iso.append(f"N{n_linea} M9")
+            n_linea += 2
+            righe_iso.append(f"N{n_linea} M5")
+            n_linea += 2
+            continue
 
         righe_iso.append(f"N{n_linea} {clean}")
         n_linea += 2
+
+    # Aggiunge M9 finale se non presente prima di M30
+    if righe_iso and "M9" not in righe_iso[-1]:
+        righe_iso.append(f"N{n_linea} M9")
 
     return "\n".join(righe_iso)
 
@@ -133,6 +146,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
     
     n_linea = 2
     utensile_attuale = 1
+    primo_z_utensile = True
 
     idx = 0
     while idx < len(righe):
@@ -163,6 +177,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             m_t = re.search(r'T(\d+)', clean)
             if m_t:
                 utensile_attuale = int(m_t.group(1))
+                primo_z_utensile = True
                 comm = ""
                 if '(' in clean:
                     comm = " [" + clean[clean.index('(')+1:].replace(')', '')
@@ -190,18 +205,19 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             n_linea += 2
             continue
 
+        # PRIMO POSIZIONAMENTO IN Z: Aggiunge M18 (o M8) solo qui
+        if primo_z_utensile and re.search(r'\bG00\b.*\bZ\d+', clean):
+            codice_acqua = "M18" if utensile_attuale in [1, 4] else "M8"
+            righe_selca.append(f"N{n_linea} {clean} {codice_acqua}")
+            n_linea += 2
+            primo_z_utensile = False
+            continue
+
         # CICLI DI FORATURA E MASCHIATURA (ISO -> SELCA)
-        # Rimuovi G99 e trasforma R3 in J3
         if "G81" in clean or "G84" in clean:
             clean_selca = clean.replace("G99 ", "").replace("G99", "").strip()
             clean_selca = re.sub(r'\bR(\d+(\.\d+)?)', r'J\1', clean_selca)
             righe_selca.append(f"N{n_linea} {clean_selca}")
-            n_linea += 2
-            continue
-
-        # Posizionamento accostamento Z3 con M18 per adduzione interna in SELCA
-        if clean == "G00 Z3":
-            righe_selca.append(f"N{n_linea} G00 Z3 M18")
             n_linea += 2
             continue
 
@@ -212,8 +228,20 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             n_linea += 2
             continue
 
+        # Spegnimento M9 prima del cambio utensile / a fine lavorazione
+        if clean in ["M5", "M05"]:
+            righe_selca.append(f"N{n_linea} M9")
+            n_linea += 2
+            righe_selca.append(f"N{n_linea} {clean}")
+            n_linea += 2
+            continue
+
         righe_selca.append(f"N{n_linea} {clean}")
         n_linea += 2
+
+    # Aggiunge M9 finale se il programma termina senza spegnimento
+    if righe_selca and "M9" not in righe_selca[-1]:
+        righe_selca.append(f"N{n_linea} M9")
 
     return "\n".join(righe_selca)
 
