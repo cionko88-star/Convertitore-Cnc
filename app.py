@@ -24,8 +24,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     }
 
     n_linea = 2
-    g61_attivo = False
-    utensile_attuale = 1  # Utensile di default se non specificato prima
+    utensile_attuale = 1
 
     idx = 0
     while idx < len(righe):
@@ -35,7 +34,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not riga_p:
             continue
 
-        # Intestazioni e Commenti
+        # Commenti e Intestazioni
         if riga_p.startswith("[CLIENTE:") or riga_p.startswith("[DISEGNO:") or riga_p.startswith("[DESCRIZIONE:") or riga_p.startswith("[MATERIALE:"):
             righe_iso.append(riga_p.replace('[', '(') + ')')
             continue
@@ -74,10 +73,9 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 n_linea += 2
                 righe_iso.append(f"N{n_linea} G00 G90 G54")
                 n_linea += 2
-                g61_attivo = False
                 continue
 
-        # Avvio Mandrino
+        # Avvio Mandrino + Adduzione Refrigerante (M51 / M8)
         if re.search(r'\bS\d+\s+M3\b', riga_p):
             s_match = re.search(r'S(\d+)', riga_p)
             s_val = s_match.group(1) if s_match else ""
@@ -96,7 +94,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
 
-        # COMPENSAZIONE RAGGIO IN ISO: Genera G49 K legato al numero dell'utensile attivo (es: G49 K2)
+        # COMPENSAZIONE RAGGIO
         if clean.startswith("G42") or clean.startswith("G41"):
             if not (righe_iso and "G49" in righe_iso[-1]):
                 righe_iso.append(f"N{n_linea} G49 K{utensile_attuale}")
@@ -106,22 +104,19 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             n_linea += 2
             continue
 
-        # CICLI DI FORATURA (G81 / G84 / G80)
+        # CICLI DI FORATURA E MASCHIATURA (SELCA -> ISO)
+        # Converti J3 in R3 e aggiungi G99 in testa al ciclo
         if "G81" in clean or "G84" in clean:
-            clean_iso = clean.replace("G99 ", "").replace("R", "J")
+            clean_iso = re.sub(r'\bJ(\d+(\.\d+)?)', r'R\1', clean)
+            if not clean_iso.startswith("G99"):
+                clean_iso = "G99 " + clean_iso
             righe_iso.append(f"N{n_linea} {clean_iso}")
             n_linea += 2
             continue
 
-        if clean == "G00 Z3":
-            righe_iso.append(f"N{n_linea} G00 Z3 M18")
-            n_linea += 2
-            continue
-
-        if clean.startswith("G00"):
-            righe_iso.append(f"N{n_linea} {clean}")
-            n_linea += 2
-            continue
+        # Rimuove M18 specifico di SELCA se presente su un blocco G00
+        if "M18" in clean:
+            clean = clean.replace(" M18", "").replace("M18", "").strip()
 
         righe_iso.append(f"N{n_linea} {clean}")
         n_linea += 2
@@ -178,7 +173,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
         if any(cmd in clean for cmd in ['G61.1', 'G64', 'G54', 'G90']):
             continue
 
-        # COMPENSAZIONE RAGGIO IN SELCA: Genera G49 K legato all'utensile attivo (es: G49 K1, G49 K2)
+        # COMPENSAZIONE RAGGIO
         if clean.startswith("G41") or clean.startswith("G42"):
             if not (righe_selca and "G49" in righe_selca[-1]):
                 righe_selca.append(f"N{n_linea} G49 K{utensile_attuale}")
@@ -190,21 +185,23 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             continue
 
         if "G49 K" in clean:
-            # Aggiorna il K dinamicamente al valore dell'utensile corrente se presente
             clean = f"G49 K{utensile_attuale}"
             righe_selca.append(f"N{n_linea} {clean}")
             n_linea += 2
             continue
 
-        # Cicli Foratura ISO -> SELCA (J -> R e aggiunge G99)
+        # CICLI DI FORATURA E MASCHIATURA (ISO -> SELCA)
+        # Rimuovi G99 e trasforma R3 in J3
         if "G81" in clean or "G84" in clean:
-            clean_selca = "G99 " + clean.replace("J", "R")
+            clean_selca = clean.replace("G99 ", "").replace("G99", "").strip()
+            clean_selca = re.sub(r'\bR(\d+(\.\d+)?)', r'J\1', clean_selca)
             righe_selca.append(f"N{n_linea} {clean_selca}")
             n_linea += 2
             continue
 
-        if clean == "G00 Z3 M18":
-            righe_selca.append(f"N{n_linea} G00 Z3")
+        # Posizionamento accostamento Z3 con M18 per adduzione interna in SELCA
+        if clean == "G00 Z3":
+            righe_selca.append(f"N{n_linea} G00 Z3 M18")
             n_linea += 2
             continue
 
