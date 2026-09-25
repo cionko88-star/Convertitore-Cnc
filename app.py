@@ -24,7 +24,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
     n_linea = 2
     utensile_attuale = 1
-    primo_z_utensile = True
 
     idx = 0
     while idx < len(righe):
@@ -63,7 +62,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             m_t = re.search(r'T(\d+)', riga_p)
             if m_t:
                 utensile_attuale = int(m_t.group(1))
-                primo_z_utensile = True
                 comm = ""
                 if '[' in riga_p:
                     comm = " " + riga_p[riga_p.index('['):].replace('[', '(')
@@ -94,15 +92,27 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
 
-        # COMPENSAZIONE RAGGIO
-        if clean.startswith("G42") or clean.startswith("G41"):
-            if not (righe_iso and "G49" in righe_iso[-1]):
-                righe_iso.append(f"N{n_linea} G49 K{utensile_attuale}")
+        # Se SELCA ha G41/G42 isolato e la riga successiva ha le coordinate, le accorpa per ISO
+        if clean in ["G41", "G42"] and idx < len(righe):
+            prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
+            if any(k in prossima for k in ['X', 'Y']):
+                if not (righe_iso and "G49" in righe_iso[-1]):
+                    righe_iso.append(f"N{n_linea} G49 K{utensile_attuale}")
+                    n_linea += 2
+                prossima_mod = prossima.replace("F400", "F800")
+                righe_iso.append(f"N{n_linea} {clean} {prossima_mod}")
                 n_linea += 2
-            clean_mod = clean.replace("F400", "F800")
-            righe_iso.append(f"N{n_linea} {clean_mod}")
-            n_linea += 2
-            continue
+                idx += 1
+                continue
+
+        # Se SELCA ha G40 isolato e la riga successiva ha le coordinate
+        if clean == "G40" and idx < len(righe):
+            prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
+            if any(k in prossima for k in ['X', 'Y']):
+                righe_iso.append(f"N{n_linea} G40 {prossima}")
+                n_linea += 2
+                idx += 1
+                continue
 
         # CICLI DI FORATURA E MASCHIATURA (SELCA -> ISO)
         if "G81" in clean or "G84" in clean:
@@ -113,17 +123,15 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             n_linea += 2
             continue
 
-        # Pulizia M18 e M8 generici sulle righe normali
         if "M18" in clean or "M8" in clean:
             clean = re.sub(r'\bM18\b|\bM8\b', '', clean).strip()
             if not clean:
                 continue
 
-        # Spegnimento M9 a fine operazione / svincolo
-        if clean == "M5":
+        if clean in ["M5", "M05"]:
             righe_iso.append(f"N{n_linea} M9")
             n_linea += 2
-            righe_iso.append(f"N{n_linea} M5")
+            righe_iso.append(f"N{n_linea} {clean}")
             n_linea += 2
             continue
 
@@ -187,15 +195,38 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
         if any(cmd in clean for cmd in ['G61.1', 'G64', 'G54', 'G90']):
             continue
 
-        # COMPENSAZIONE RAGGIO
+        # COMPENSAZIONE RAGGIO G41 / G42 (Separati in SELCA)
         if clean.startswith("G41") or clean.startswith("G42"):
+            cmd_g = "G41" if "G41" in clean else "G42"
+            rest_xy = clean.replace(cmd_g, "").strip()
+            
             if not (righe_selca and "G49" in righe_selca[-1]):
                 righe_selca.append(f"N{n_linea} G49 K{utensile_attuale}")
                 n_linea += 2
             
-            clean_selca = clean.replace("F800", "F400")
-            righe_selca.append(f"N{n_linea} {clean_selca}")
+            # 1. Riga isolata con G41/G42
+            righe_selca.append(f"N{n_linea} {cmd_g}")
             n_linea += 2
+            
+            # 2. Riga successiva con i movimenti XY
+            if rest_xy:
+                rest_xy = rest_xy.replace("F800", "F400")
+                righe_selca.append(f"N{n_linea} {rest_xy}")
+                n_linea += 2
+            continue
+
+        # ANNULLAMENTO COMPENSAZIONE G40 (Separato in SELCA)
+        if "G40" in clean:
+            rest_xy = clean.replace("G40", "").strip()
+            
+            # 1. Riga isolata con G40
+            righe_selca.append(f"N{n_linea} G40")
+            n_linea += 2
+            
+            # 2. Riga successiva con i movimenti XY di svincolo
+            if rest_xy:
+                righe_selca.append(f"N{n_linea} {rest_xy}")
+                n_linea += 2
             continue
 
         if "G49 K" in clean:
@@ -204,13 +235,19 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             n_linea += 2
             continue
 
-        # PRIMO POSIZIONAMENTO IN Z (con o senza G00): Aggiunge M18 o M8
+        # PRIMO POSIZIONAMENTO IN Z (Aggiunge G00 se manca e inserisce M18/M8)
         if primo_z_utensile and re.search(r'\bZ-?\d+(\.\d+)?\b', clean):
             codice_acqua = "M18" if utensile_attuale in [1, 4] else "M8"
+            if not clean.startswith("G00") and not clean.startswith("G01"):
+                clean = "G00 " + clean
             righe_selca.append(f"N{n_linea} {clean} {codice_acqua}")
             n_linea += 2
             primo_z_utensile = False
             continue
+
+        # Riposizionamento in rapido XY senza Z: Assicura G00 in testa se è un rapido
+        if re.match(r'^X-?\d+.*Y-?\d+', clean) and not clean.startswith("G01") and not clean.startswith("G02") and not clean.startswith("G03"):
+            clean = "G00 " + clean
 
         # CICLI DI FORATURA E MASCHIATURA (ISO -> SELCA)
         if "G81" in clean or "G84" in clean:
@@ -227,7 +264,6 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             n_linea += 2
             continue
 
-        # Spegnimento M9 prima del cambio utensile / a fine lavorazione
         if clean in ["M5", "M05"]:
             righe_selca.append(f"N{n_linea} M9")
             n_linea += 2
