@@ -1,4 +1,3 @@
-
 from flask import Flask, render_template_string, request, Response
 import re
 import os
@@ -27,7 +26,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     utensile_attuale = 1
     curr_x, curr_y = 0.0, 0.0
     in_lavorazione_attiva = False
-    modo_movimento_corrente = None  # Traccia lo stato modale (G00 o G01)
+    modo_movimento_corrente = None  # Traccia lo stato modale effettivo (G00, G01, G02, G03)
 
     idx = 0
     while idx < len(righe):
@@ -56,7 +55,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 righe_iso.append(f"N{n_linea} M9")
                 n_linea += 2
                 in_lavorazione_attiva = False
-                modo_movimento_corrente = None  # Reset del modo a fine lavorazione
+                modo_movimento_corrente = None
 
             comm = riga_p.replace('[', '(')
             if not comm.endswith(')'): comm += ')'
@@ -132,7 +131,13 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                     righe_iso.append(f"N{n_linea} G49 K{utensile_attuale}")
                     n_linea += 2
                 prossima_mod = prossima.replace("F400", "F800")
-                righe_iso.append(f"N{n_linea} {clean} {prossima_mod}")
+                
+                # Gestione modale G01 con compensazione
+                if modo_movimento_corrente != "G01":
+                    righe_iso.append(f"N{n_linea} {clean} G01 {prossima_mod}")
+                    modo_movimento_corrente = "G01"
+                else:
+                    righe_iso.append(f"N{n_linea} {clean} {prossima_mod}")
                 
                 m_x = re.search(r'X(-?\d+(\.\d+)?)', prossima_mod)
                 m_y = re.search(r'Y(-?\d+(\.\d+)?)', prossima_mod)
@@ -142,7 +147,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 n_linea += 2
                 idx += 1
                 in_lavorazione_attiva = True
-                modo_movimento_corrente = "G01"  # Compensazione solitamente attiva in lavoro
                 continue
 
         # Se SELCA ha G40 isolato
@@ -181,9 +185,14 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             if j_abs is not None:
                 new_tokens.append(f"J{round(j_abs - curr_y, 3)}")
                 
-            clean = f"{cmd_g} " + " ".join(new_tokens)
+            # Stampa G02/G03 solo se diverso dallo stato corrente
+            if modo_movimento_corrente != cmd_g:
+                clean = f"{cmd_g} " + " ".join(new_tokens)
+                modo_movimento_corrente = cmd_g
+            else:
+                clean = " ".join(new_tokens)
+
             in_lavorazione_attiva = True
-            modo_movimento_corrente = cmd_g
 
         # Tracciamento coordinate
         m_x = re.search(r'X(-?\d+(\.\d+)?)', clean)
@@ -202,24 +211,26 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             modo_movimento_corrente = None
             continue
 
-        # Ottimizzazione logica G00 / G01: se la riga contiene solo coordinate (X/Y/Z) o F ma manca G0/G1
-        has_coord = any(k in clean for k in ['X', 'Y', 'Z'])
-        has_explicit_g = clean.startswith("G0") or clean.startswith("G1") or clean.startswith("G2") or clean.startswith("G3") or clean.startswith("G8")
-        
-        if has_coord and not has_explicit_g:
-            # Determiniamo se siamo in rapido o lavoro basandoci su Z o sulla F o sul contesto precedente
-            # In Selca classico, se non c'è F ed è un movimento isolato in Z o X/Y senza lavorazione attiva, è G00. 
-            # Oppure se "F" è presente nella riga o se eravamo già in G01, ci comportiamo di conseguenza.
-            is_lavoro = "F" in clean or modo_movimento_corrente == "G01"
-            atteso_g = "G01" if is_lavoro else "G00"
-            
-            if atteso_g != modo_movimento_corrente:
-                clean = f"{atteso_g} {clean}"
-                modo_movimento_corrente = atteso_g
-        elif clean.startswith("G00") or clean.startswith("G0"):
+        # Intercettazione esplicita comandi G0 / G1
+        if clean.startswith("G00") or clean.startswith("G0 "):
             modo_movimento_corrente = "G00"
-        elif clean.startswith("G01") or clean.startswith("G1"):
-            modo_movimento_corrente = "G01"
+        elif clean.startswith("G01") or clean.startswith("G1 "):
+            if modo_movimento_corrente == "G01":
+                # Se eravamo già in G01, rimuoviamo la ripetizione superflua del comando
+                clean = re.sub(r'^G0?1\s*', '', clean)
+            else:
+                modo_movimento_corrente = "G01"
+        else:
+            # Se la riga contiene coordinate ma nessun G esplicito
+            has_coord = any(k in clean for k in ['X', 'Y', 'Z'])
+            if has_coord:
+                is_lavoro = "F" in clean or in_lavorazione_attiva
+                atteso_g = "G01" if is_lavoro else "G00"
+                
+                if atteso_g != modo_movimento_corrente:
+                    clean = f"{atteso_g} {clean}"
+                    modo_movimento_corrente = atteso_g
+                # Se atteso_g == modo_movimento_corrente, non aggiungiamo nulla (resta implicito/modale)
 
         if "M18" in clean or "M8" in clean:
             clean = re.sub(r'\bM18\b|\bM8\b', '', clean).strip()
