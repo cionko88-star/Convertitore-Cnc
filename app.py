@@ -8,6 +8,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     righe = codice_selca.strip().split('\n')
     righe_iso = []
     
+    # Tabella dati utensili
     info_utensili = {
         1: {"s": 4400, "m_cool": "M51", "next_t": 2, "desc": "T1 - FRESA 3 INS. SPALL. RETTO - D.20"},
         2: {"s": 1300, "m_cool": "M8",  "next_t": 3, "desc": "T2 - FRESA 4TG. MET. DURO - D.16"},
@@ -24,7 +25,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     modo_movimento_corrente = None  
     attesa_g61 = False
 
-    # Intestazione iniziale con elenco utensili
+    # --- 1. INTESTAZIONE INIZIALE FISSA ---
     righe_iso.append("( T2 FRESA 4TG. MET. DURO - D.16 - INSERIRE RAGGIO)")
     righe_iso.append("(-------------------------------------------------------)")
     righe_iso.append("( T3 FRESA PASSO VAR. 4TG. MET. DURO FRAISA - D.12 - INSERIRE RAGGIO)")
@@ -47,30 +48,23 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not riga_p:
             continue
 
-        if riga_p.startswith("[CLIENTE:") or riga_p.startswith("[DISEGNO:") or riga_p.startswith("[DESCRIZIONE:") or riga_p.startswith("[MATERIALE:") or riga_p.startswith("[Data:") or riga_p.startswith("[PROG:") or riga_p.startswith("[MACCHINA:"):
-            continue
-
-        if riga_p.startswith('['):
-            is_smussi_cave = "SMUSSI CAVE" in riga_p
-            if in_lavorazione_attiva and not is_smussi_cave:
-                righe_iso.append(f"N{n_linea} G64")
-                n_linea += 2
-                righe_iso.append(f"N{n_linea} M9")
-                n_linea += 2
-                righe_iso.append(f"N{n_linea} M5")
-                n_linea += 2
-                in_lavorazione_attiva = False
-                modo_movimento_corrente = None
-
-            comm = riga_p.replace('[', '(')
-            if not comm.endswith(')'): comm += ')'
-            if "N.B.= METTERE RAGGIO R.=0.3" in comm:
-                comm = "( N.B.= METTERE DIAMETRO D.=0.8 )"
-            righe_iso.append("")
-            righe_iso.append(comm)
+        # Salta intestazioni Selca tecniche
+        if any(riga_p.startswith(k) for k in ["[CLIENTE:", "[DISEGNO:", "[DESCRIZIONE:", "[MATERIALE:", "[Data:", "[PROG:", "[MACCHINA:"]):
             continue
 
         if riga_p in ['N2 G17', 'O1']:
+            continue
+
+        # Gestione commenti descrittivi nel corpo
+        if riga_p.startswith('['):
+            comm = riga_p.replace('[', '(')
+            if not comm.endswith(')'): 
+                comm += ')'
+            if "N.B.= METTERE RAGGIO R.=0.3" in comm:
+                comm = "( N.B.= METTERE DIAMETRO D.=0.8 )"
+            
+            righe_iso.append("")
+            righe_iso.append(comm)
             continue
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
@@ -78,8 +72,8 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not clean:
             continue
 
-        # Cambio Utensile
-        if re.search(r'\bT\d+\s+M6\b', clean) or (re.search(r'\bT\d+\b', clean) and 'M6' in clean):
+        # Cambio Utensile (T... M6)
+        if re.search(r'\bT\d+\b', clean) and ('M6' in clean or 'M06' in clean):
             if in_lavorazione_attiva:
                 righe_iso.append(f"N{n_linea} G64")
                 n_linea += 2
@@ -103,7 +97,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 modo_movimento_corrente = "G00"
                 continue
 
-        # Avvio Mandrino
+        # Avvio Mandrino (S... M3)
         if re.search(r'\bS\d+\s+M3\b', clean):
             s_match = re.search(r'S(\d+)', clean)
             s_val = s_match.group(1) if s_match else ""
@@ -124,13 +118,14 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             in_lavorazione_attiva = True
             continue
 
+        # Intercettazione posizionamento Z in alto (prepara attivazione G61.1 sulla prossima discesa in lavorazione)
         if clean.startswith("Z") and modo_movimento_corrente == "G00":
             righe_iso.append(f"N{n_linea} {clean}")
             n_linea += 2
             attesa_g61 = True
             continue
 
-        # Gestione G41 / G42 diretta senza G49 K
+        # Gestione G41 / G42 diretta
         if clean in ["G41", "G42"] and idx < len(righe):
             prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
             prossima = re.sub(r'\bM0?[59]\b', '', prossima).strip()
@@ -158,6 +153,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 in_lavorazione_attiva = True
                 continue
 
+        # Gestione G40
         if clean == "G40" and idx < len(righe):
             prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
             prossima = re.sub(r'\bM0?[59]\b', '', prossima).strip()
@@ -174,7 +170,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 in_lavorazione_attiva = True
                 continue
 
-        # Conversione Archi G02 / G03
+        # Conversione Archi G02 / G03 (da assoluti a incrementali per I e J)
         if clean.startswith("G02") or clean.startswith("G03") or clean.startswith("G2") or clean.startswith("G3"):
             parts = clean.split()
             cmd_g = parts[0].replace("G2", "G02").replace("G3", "G03")
@@ -206,16 +202,19 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
             in_lavorazione_attiva = True
 
+        # Aggiornamento coordinate correnti
         m_x = re.search(r'X(-?\d+(\.\d+)?)', clean)
         m_y = re.search(r'Y(-?\d+(\.\d+)?)', clean)
         if m_x: curr_x = float(m_x.group(1))
         if m_y: curr_y = float(m_y.group(1))
 
+        # Inserimento controllato di G64 solo quando si alza l'utensile in rapido (fine lavorazione pezzo/quota)
         if clean.startswith("G00 Z") or (clean.startswith("Z") and modo_movimento_corrente == "G00"):
             if not any("G64" in r for r in righe_iso[-2:]):
                 righe_iso.append(f"N{n_linea} G64")
                 n_linea += 2
 
+        # Gestione modale movimenti G00 / G01
         if clean.startswith("G00") or clean.startswith("G0 "):
             modo_movimento_corrente = "G00"
         elif clean.startswith("G01") or clean.startswith("G1 "):
@@ -253,6 +252,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if any(k in clean for k in ['X', 'Y', 'Z', 'G0', 'G1', 'G2', 'G3']):
             in_lavorazione_attiva = True
 
+    # Chiusura finale pulita del programma ISO
     if righe_iso:
         if not any("G64" in r for r in righe_iso[-3:]):
             righe_iso.append(f"N{n_linea} G64")
@@ -267,7 +267,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
 
 def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str:
-    # (Invariato per ora, ci concentriamo su questo step)
     return codice_iso
 
 
@@ -296,7 +295,6 @@ HTML_TEMPLATE = """
         .btn { padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; font-size: 14px; }
         .btn-primary { background-color: #0d9488; color: #fff; }
         .btn-secondary { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
-        .btn-swap { background-color: #f97316; color: #fff; }
     </style>
 </head>
 <body>
@@ -306,7 +304,7 @@ HTML_TEMPLATE = """
     <div class="main-content">
         <h1 class="header-title">Convertitore CNC ISO ⇄ SELCA</h1>
         <form method="POST" action="/converti" id="mainForm">
-            <input type="hidden" name="modalita" value="{{ modalita or 'selca_to_iso' }}">
+            <input type="hidden" name="modalita" value="selca_to_iso">
             <div class="control-bar">
                 <span>Modalità:</span>
                 <span class="direction-badge">SELCA ➔ ISO (.eia)</span>
@@ -317,16 +315,16 @@ HTML_TEMPLATE = """
             </div>
             <div class="workspace">
                 <div class="card">
-                    <h3>Codice Sorgente</h3>
+                    <h3>Codice Sorgente (SELCA)</h3>
                     <textarea name="codice_sorgente" placeholder="Incolla il programma Selca...">{{ codice_sorgente }}</textarea>
                     <div class="actions">
                         <button type="button" class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">📁 Carica file</button>
                         <input type="file" id="fileInput" style="display:none" onchange="caricaFile(this)">
-                        <button type="submit" class="btn btn-primary">⚙️ Converti Programma</button>
+                        <button type="submit" class="btn btn-primary">⚙️ Converti in ISO</button>
                     </div>
                 </div>
                 <div class="card">
-                    <h3>Codice Convertito</h3>
+                    <h3>Codice Convertito (ISO)</h3>
                     <textarea class="output" readonly>{{ codice_convertito }}</textarea>
                     <div class="actions" style="justify-content: flex-end;">
                         <button type="submit" formaction="/scarica" class="btn btn-primary">Scarica File</button>
@@ -353,15 +351,14 @@ HTML_TEMPLATE = """
 
 @app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE, codice_sorgente="", codice_convertito="", modalita="selca_to_iso", nome_programma="200011974-A")
+    return render_template_string(HTML_TEMPLATE, codice_sorgente="", codice_convertito="", nome_programma="200011974-A")
 
 @app.route('/converti', methods=['POST'])
 def converti():
     codice_sorgente = request.form.get('codice_sorgente', '')
-    modalita = request.form.get('modalita', 'selca_to_iso')
     nome_programma = request.form.get('nome_programma', '200011974-A').strip()
     codice_convertito = traduci_selca_in_iso(codice_sorgente, nome_programma)
-    return render_template_string(HTML_TEMPLATE, codice_sorgente=codice_sorgente, codice_convertito=codice_convertito, modalita=modalita, nome_programma=nome_programma)
+    return render_template_string(HTML_TEMPLATE, codice_sorgente=codice_sorgente, codice_convertito=codice_convertito, nome_programma=nome_programma)
 
 @app.route('/scarica', methods=['POST'])
 def scarica():
