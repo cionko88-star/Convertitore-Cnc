@@ -65,7 +65,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not clean:
             continue
 
-        # Cambio Utensile (M6): inserisce M5 ed M9 solo se il precedente utensile ha effettivamente lavorato
+        # Cambio Utensile (M6): se l'utensile precedente ha lavorato, inserisce M5 ed M9 prima del cambio se non già fatto
         if re.search(r'\bT\d+\s+M6\b', clean) or (re.search(r'\bT\d+\b', clean) and 'M6' in clean):
             if ha_lavorato_questo_utensile:
                 righe_iso.append(f"N{n_linea} M5")
@@ -169,6 +169,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         # Tracciamento coordinate
         m_x = re.search(r'X(-?\d+(\.\d+)?)', clean)
         m_y = re.search(r'Y(-?\d+(\.\d+)?)', clean)
+        m_z = re.search(r'Z(-?\d+(\.\d+)?)', clean)
         if m_x: curr_x = float(m_x.group(1))
         if m_y: curr_y = float(m_y.group(1))
 
@@ -192,7 +193,16 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if any(k in clean for k in ['X', 'Y', 'Z', 'G0', 'G1', 'G2', 'G3']):
             ha_lavorato_questo_utensile = True
 
-    # Chiusura finale obbligatoria se l'ultimo utensile ha lavorato
+        # INSERIMENTO AUTOMATICO DI M5 ED M9 DOPO G00 Z (es. G00 Z100)
+        is_g00_z_positivo = ("G0" in clean or "G00" in clean) and m_z and float(m_z.group(1)) > 0
+        if is_g00_z_positivo and ha_lavorato_questo_utensile:
+            righe_iso.append(f"N{n_linea} M5")
+            n_linea += 2
+            righe_iso.append(f"N{n_linea} M9")
+            n_linea += 2
+            ha_lavorato_questo_utensile = False
+
+    # Chiusura finale di sicurezza se l'ultimo utensile ha lavorato e non ha inserito M5/M9
     if righe_iso and ha_lavorato_questo_utensile:
         righe_iso.append(f"N{n_linea} M5")
         n_linea += 2
@@ -239,6 +249,11 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             continue
 
         clean = re.sub(r'^N\d+\s*', '', riga)
+        
+        # Intercetta M5 ed M9 nel codice ISO in arrivo e saltali per pulizia nella conversione inversa
+        if clean in ["M5", "M9"]:
+            continue
+
         clean = re.sub(r'\bM0?[59]\b', '', clean).strip()
         if not clean:
             continue
