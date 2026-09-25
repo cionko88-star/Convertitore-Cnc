@@ -199,6 +199,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
     n_linea = 2
     utensile_attuale = 1
     primo_z_utensile = True
+    modalita_moto = "G00"  # Gestione della modalità modale (G00 / G01 / G02 / G03)
     curr_x, curr_y = 0.0, 0.0
 
     idx = 0
@@ -222,6 +223,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             righe_selca.append("N2 G17")
             righe_selca.append("O1")
             n_linea = 4
+            modalita_moto = "G00"
             continue
 
         clean = re.sub(r'^N\d+\s*', '', riga)
@@ -231,6 +233,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             if m_t:
                 utensile_attuale = int(m_t.group(1))
                 primo_z_utensile = True
+                modalita_moto = "G00"
                 comm = ""
                 if '(' in clean:
                     comm = " [" + clean[clean.index('(')+1:].replace(')', '')
@@ -240,6 +243,16 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
 
         if any(cmd in clean for cmd in ['G61.1', 'G64', 'G54', 'G90']):
             continue
+
+        # Aggiornamento stato modale di movimento
+        if re.search(r'\bG0*0\b', clean):
+            modalita_moto = "G00"
+        elif re.search(r'\bG0*1\b', clean):
+            modalita_moto = "G01"
+        elif re.search(r'\bG0*2\b', clean):
+            modalita_moto = "G02"
+        elif re.search(r'\bG0*3\b', clean):
+            modalita_moto = "G03"
 
         # COMPENSAZIONE RAGGIO G41 / G42
         if clean.startswith("G41") or clean.startswith("G42"):
@@ -338,7 +351,7 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             primo_z_utensile = False
             continue
 
-        # CICLI DI FORATURA E MASCHIATURA (ISO -> SELCA: Aggiunta automatica di G00 + prima posizione XY)
+        # CICLI DI FORATURA E MASCHIATURA (ISO -> SELCA)
         if any(ciclo in clean for ciclo in ["G81", "G84", "G85"]):
             m_x_iso = re.search(r'X(-?\d+(\.\d+)?)', clean)
             m_y_iso = re.search(r'Y(-?\d+(\.\d+)?)', clean)
@@ -354,13 +367,15 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             righe_selca.append(f"N{n_linea} {clean_selca}")
             n_linea += 2
             
-            # Aggiunto G00 prima delle coordinate XY
-            righe_selca.append(f"N{n_linea} G00 X{curr_x:g} Y{curr_y:g}")
+            # Posizionamento XY SENZA G00 dopo il ciclo di foratura
+            righe_selca.append(f"N{n_linea} X{curr_x:g} Y{curr_y:g}")
             n_linea += 2
             continue
 
-        if re.match(r'^X-?\d+.*Y-?\d+', clean) and not clean.startswith("G01") and not clean.startswith("G02") and not clean.startswith("G03"):
-            clean = "G00 " + clean
+        # Gestione G01 modale per spostamenti
+        if re.match(r'^X-?\d+.*Y-?\d+', clean) and not any(clean.startswith(cmd) for cmd in ["G00", "G0", "G01", "G1", "G02", "G2", "G03", "G3"]):
+            if modalita_moto in ["G01", "G1"]:
+                clean = "G01 " + clean
 
         if "S" in clean and "M3" in clean:
             m_s = re.search(r'S\d+', clean)
