@@ -48,17 +48,19 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not riga_p:
             continue
 
-        # Salta intestazioni Selca tecniche o blocchi di ripetizione utensili sparsi
+        # Salta intestazioni Selca tecniche
         if any(riga_p.startswith(k) for k in ["[CLIENTE:", "[DISEGNO:", "[DESCRIZIONE:", "[MATERIALE:", "[Data:", "[PROG:", "[MACCHINA:"]):
             continue
 
         if riga_p in ['N2 G17', 'O1']:
             continue
 
-        # Se incontriamo blocchi di commenti ripetuti degli utensili nel mezzo del codice, li saltiamo
-        if "FRESA" in riga_p or "PUNTA FORATA" in riga_p or "CENTRINO" in riga_p or "MASCHIO" in riga_p:
-            if riga_p.startswith('(') or riga_p.startswith('['):
-                continue
+        # FILTRO AGGIORNATO: Salta i blocchi di utensili duplicati e le relative linee tratteggiate nel mezzo del codice
+        is_tool_desc = any(k in riga_p for k in ["FRESA 3 INS", "FRESA 4TG", "FRESA PASSO", "PUNTA FORATA MET", "CENTRINO MINIMASTER", "MASCHIO CIECO SENZA PUNTA"])
+        is_orphan_dash = riga_p.startswith('(') and all(c in '(- )' for c in riga_p) and not any(k in riga_p for k in ["SI ESEGUE", "STRINGERE", "APPOGGIO", "LO ZERO"])
+        
+        if is_tool_desc or is_orphan_dash:
+            continue
 
         # Gestione commenti descrittivi validi nel corpo
         if riga_p.startswith('['):
@@ -74,7 +76,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
         
-        # ELIMINAZIONE TOTALE DI G49 K (es. G49 K2, G49 K3)
+        # ELIMINAZIONE TOTALE DI G49 K
         if re.search(r'\bG49\s+K', clean, re.IGNORECASE):
             continue
 
@@ -135,7 +137,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             attesa_g61 = True
             continue
 
-        # Gestione G41 / G42 diretta (senza passare per G49 K)
+        # Gestione G41 / G42 diretta
         if clean in ["G41", "G42"] and idx < len(righe):
             prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
             prossima = re.sub(r'\bM0?[59]\b', '', prossima).strip()
@@ -180,7 +182,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 in_lavorazione_attiva = True
                 continue
 
-        # Conversione Archi G02 / G03 (da assoluti a incrementali per I e J)
+        # Conversione Archi G02 / G03
         if clean.startswith("G02") or clean.startswith("G03") or clean.startswith("G2") or clean.startswith("G3"):
             parts = clean.split()
             cmd_g = parts[0].replace("G2", "G02").replace("G3", "G03")
@@ -212,19 +214,16 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
             in_lavorazione_attiva = True
 
-        # Aggiornamento coordinate correnti
         m_x = re.search(r'X(-?\d+(\.\d+)?)', clean)
         m_y = re.search(r'Y(-?\d+(\.\d+)?)', clean)
         if m_x: curr_x = float(m_x.group(1))
         if m_y: curr_y = float(m_y.group(1))
 
-        # Inserimento controllato di G64 in rapido Z alto
         if clean.startswith("G00 Z") or (clean.startswith("Z") and modo_movimento_corrente == "G00"):
             if not any("G64" in r for r in righe_iso[-2:]):
                 righe_iso.append(f"N{n_linea} G64")
                 n_linea += 2
 
-        # Gestione modale movimenti G00 / G01
         if clean.startswith("G00") or clean.startswith("G0 "):
             modo_movimento_corrente = "G00"
         elif clean.startswith("G01") or clean.startswith("G1 "):
@@ -262,7 +261,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if any(k in clean for k in ['X', 'Y', 'Z', 'G0', 'G1', 'G2', 'G3']):
             in_lavorazione_attiva = True
 
-    # Chiusura finale pulita
     if righe_iso:
         if not any("G64" in r for r in righe_iso[-3:]):
             righe_iso.append(f"N{n_linea} G64")
