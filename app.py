@@ -45,9 +45,8 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         elif riga_p.startswith("[PROG:") or riga_p.startswith("[MACCHINA:"):
             continue
 
-        # Gestione commenti / descrizioni utensile
+        # Gestione commenti / descrizioni utensile (chiusura mandrino/refrigerante solo se l'utensile precedente ha lavorato)
         if riga_p.startswith('['):
-            # Se avevamo una lavorazione attiva e incontriamo un commento (spesso descrittivo del prossimo utensile), chiudiamo prima con M5/M9
             if in_lavorazione_attiva:
                 righe_iso.append(f"N{n_linea} M5")
                 n_linea += 2
@@ -175,7 +174,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if m_x: curr_x = float(m_x.group(1))
         if m_y: curr_y = float(m_y.group(1))
 
-        # CICLI DI FORATURA/MASCHIATURA (es. G81, G84, G85)
+        # CICLI DI FORATURA/MASCHIATURA (es. G81, G84, G85) - RIMOSSO M5/M9 automatico qui in mezzo
         if any(ciclo in clean for ciclo in ["G81", "G84", "G85"]):
             clean_iso = re.sub(r'\bJ(\d+(\.\d+)?)', r'R\1', clean)
             if not clean_iso.startswith("G99"):
