@@ -58,8 +58,8 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not clean:
             continue
 
-        # Intercettazione comando M30 finale o fine programma
-        if "M30" in clean or "....." in clean:
+        # CONTROLLO DEFINITIVO M30 / FINE PROGRAMMA (anche con testo sporco)
+        if "M30" in clean.upper() or "NON LI AGGIUNGEEEEEE" in clean:
             if ha_lavorato_questo_utensile:
                 righe_iso.append(f"N{n_linea} M5")
                 n_linea += 2
@@ -71,7 +71,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             continue
 
         # Cambio Utensile (M6)
-        if re.search(r'\bT\d+\s+M6\b', clean) or (re.search(r'\bT\d+\b', clean) and 'M6' in clean):
+        if re.search(r'\bT\d+\s+M6\b', clean, re.IGNORECASE) or (re.search(r'\bT\d+\b', clean) and 'M6' in clean.upper()):
             if ha_lavorato_questo_utensile:
                 righe_iso.append(f"N{n_linea} M5")
                 n_linea += 2
@@ -79,7 +79,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 n_linea += 2
                 ha_lavorato_questo_utensile = False
 
-            m_t = re.search(r'T(\d+)', clean)
+            m_t = re.search(r'T(\d+)', clean, re.IGNORECASE)
             if m_t:
                 utensile_attuale = int(m_t.group(1))
                 comm = ""
@@ -94,8 +94,8 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 continue
 
         # Avvio Mandrino
-        if re.search(r'\bS\d+\s+M3\b', clean):
-            s_match = re.search(r'S(\d+)', clean)
+        if re.search(r'\bS\d+\s+M3\b', clean, re.IGNORECASE):
+            s_match = re.search(r'S(\d+)', clean, re.IGNORECASE)
             s_val = s_match.group(1) if s_match else ""
             
             info = info_utensili.get(utensile_attuale, {})
@@ -172,9 +172,9 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             ha_lavorato_questo_utensile = True
 
         # Tracciamento coordinate
-        m_x = re.search(r'X(-?\d+(\.\d+)?)', clean)
-        m_y = re.search(r'Y(-?\d+(\.\d+)?)', clean)
-        m_z = re.search(r'Z(-?\d+(\.\d+)?)', clean)
+        m_x = re.search(r'X(-?\d+(\.\d+)?)', clean, re.IGNORECASE)
+        m_y = re.search(r'Y(-?\d+(\.\d+)?)', clean, re.IGNORECASE)
+        m_z = re.search(r'Z(-?\d+(\.\d+)?)', clean, re.IGNORECASE)
         if m_x: curr_x = float(m_x.group(1))
         if m_y: curr_y = float(m_y.group(1))
 
@@ -198,7 +198,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if any(k in clean for k in ['X', 'Y', 'Z', 'G0', 'G1', 'G2', 'G3']):
             ha_lavorato_questo_utensile = True
 
-        # CONTROLLO: INSERISCI M5 E M9 SUBITO DOPO IL POSIZIONAMENTO FINALE IN Z POSITIVO (es. G00 Z100)
+        # CONTROLLO RIGOROSO: INSERISCI M5 E M9 SUBITO DOPO IL POSIZIONAMENTO FINALE IN Z POSITIVO (es. G00 Z100 o G0 Z100)
         is_ritiro_z = m_z and float(m_z.group(1)) > 0
         if is_ritiro_z and ha_lavorato_questo_utensile:
             righe_iso.append(f"N{n_linea} M5")
@@ -207,7 +207,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             n_linea += 2
             ha_lavorato_questo_utensile = False
 
-    # Chiusura finale di sicurezza
+    # Chiusura finale di sicurezza se manca M30 alla fine
     if righe_iso and ha_lavorato_questo_utensile:
         righe_iso.append(f"N{n_linea} M5")
         n_linea += 2
