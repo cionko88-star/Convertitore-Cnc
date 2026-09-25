@@ -6,18 +6,13 @@ app = Flask(__name__)
 
 def converti_commento_in_selca(linea: str) -> str:
     """Converte i commenti da formato ISO (COMMENTO) a SELCA [COMMENTO]"""
-    # Se il commento usa parentesi tonde (ISO), convertilo in quadre [SELCA]
     linea = re.sub(r'\((.*?)\)', r'[\1]', linea)
     return linea
 
 def converti_commento_in_iso(linea: str) -> str:
-    """Converte i commenti da formato SELCA [COMMENTO] a ISO (COMMENTO)"""
-    # Sostituisce parentesi quadre ben formate [COMMENTO] -> (COMMENTO)
-    if '[' in linea and ']' in linea:
-        linea = re.sub(r'\[(.*?)\]', r'(\1)', linea)
-    # Se c'è solo '[' aperta e non chiusa, sostituisci '[' con '(' e aggiungi ')' in fondo
-    elif '[' in linea and ']' not in linea:
-        linea = linea.replace('[', '(', 1) + ')'
+    """Converte i commenti da formato SELCA [COMMENTO a ISO (COMMENTO"""
+    # Cambia '[' in '(' e rimuove ']' lasciando vuoto al suo posto
+    linea = linea.replace('[', '(').replace(']', '')
     return linea
 
 def traduci_iso_in_selca(codice_iso: str, nome_programma: str = "") -> str:
@@ -32,7 +27,6 @@ def traduci_iso_in_selca(codice_iso: str, nome_programma: str = "") -> str:
         if not riga_pulita or riga_pulita.startswith('%'):
             continue
 
-        # Gestione commenti isolati o a fine riga
         riga_pulita = converti_commento_in_selca(riga_pulita)
 
         if riga_pulita.startswith('O'):
@@ -87,7 +81,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_programma: str = "") -> str:
         if not riga_pulita or riga_pulita.startswith('%'):
             continue
 
-        # Gestione commenti isolati o a fine riga
         riga_pulita = converti_commento_in_iso(riga_pulita)
 
         if riga_pulita.startswith('O'):
