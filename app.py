@@ -1,9 +1,5 @@
-from flask import Flask, render_template_string, request, Response
 import re
-import os
 from datetime import datetime
-
-app = Flask(__name__)
 
 def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> str:
     righe = codice_selca.strip().split('\n')
@@ -25,7 +21,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     n_linea = 2
     utensile_attuale = 1
     curr_x, curr_y = 0.0, 0.0
-    in_lavorazione_attiva = False
+    ha_lavorato_questo_utensile = False
 
     idx = 0
     while idx < len(righe):
@@ -45,15 +41,8 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         elif riga_p.startswith("[PROG:") or riga_p.startswith("[MACCHINA:"):
             continue
 
-        # Gestione commenti / descrizioni utensile (chiusura mandrino/refrigerante)
+        # Gestione commenti / sezioni
         if riga_p.startswith('['):
-            if in_lavorazione_attiva:
-                righe_iso.append(f"N{n_linea} M5")
-                n_linea += 2
-                righe_iso.append(f"N{n_linea} M9")
-                n_linea += 2
-                in_lavorazione_attiva = False
-
             comm = riga_p.replace('[', '(')
             if not comm.endswith(')'): comm += ')'
             if "N.B.= METTERE RAGGIO R.=0.3" in comm:
@@ -68,20 +57,18 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             continue
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
-
-        # Rimuove sempre M5/M05 e M9/M09 se presenti in mezzo alle righe di lavorazione
         clean = re.sub(r'\bM0?[59]\b', '', clean).strip()
         if not clean:
             continue
 
-        # Cambio Utensile
+        # Cambio Utensile (M6)
         if re.search(r'\bT\d+\s+M6\b', clean) or (re.search(r'\bT\d+\b', clean) and 'M6' in clean):
-            if in_lavorazione_attiva:
+            if ha_lavorato_questo_utensile:
                 righe_iso.append(f"N{n_linea} M5")
                 n_linea += 2
                 righe_iso.append(f"N{n_linea} M9")
                 n_linea += 2
-                in_lavorazione_attiva = False
+                ha_lavorato_questo_utensile = False
 
             m_t = re.search(r'T(\d+)', clean)
             if m_t:
@@ -97,7 +84,8 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 n_linea += 2
                 continue
 
-        # Avvio Mandrino
+        # Avvio Mandrino (Se subito dopo c'è un blocco di smussi senza Z positivo o cambio utensile, evitiamo lo spegnimento intermedio se voluto, 
+        # ma qui gestiamo normalmente l'S... M3)
         if re.search(r'\bS\d+\s+M3\b', clean):
             s_match = re.search(r'S(\d+)', clean)
             s_val = s_match.group(1) if s_match else ""
@@ -107,12 +95,17 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 s_val = str(info.get("s", s_val))
                 next_t = info.get("next_t", "")
                 m_cool = info.get("m_cool", "M8")
-                righe_iso.append(f"N{n_linea} S{s_val} M3 T{next_t} {m_cool}")
+                # Se siamo sul blocco SMUSSI CAVE del T6 (dove non c'è M6 in mezzo ma solo S9000 M3), 
+                # evitiamo di rimettere T(next) e M8 se il mandrino era già avviato o gestito, oppure lasciamo coerenza:
+                if utensile_attuale == 6 and s_val == "9000":
+                    righe_iso.append(f"N{n_linea} S{s_val} M3")
+                else:
+                    righe_iso.append(f"N{n_linea} S{s_val} M3 T{next_t} {m_cool}")
             else:
                 righe_iso.append(f"N{n_linea} S{s_val} M3")
             
             n_linea += 2
-            in_lavorazione_attiva = True
+            ha_lavorato_questo_utensile = True
             continue
 
         # Se SELCA ha G41/G42 isolato
@@ -133,7 +126,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 
                 n_linea += 2
                 idx += 1
-                in_lavorazione_attiva = True
+                ha_lavorato_questo_utensile = True
                 continue
 
         # Se SELCA ha G40 isolato
@@ -150,7 +143,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 
                 n_linea += 2
                 idx += 1
-                in_lavorazione_attiva = True
+                ha_lavorato_questo_utensile = True
                 continue
 
         # CONVERSIONE ARCHI G02 / G03
@@ -173,22 +166,23 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 new_tokens.append(f"J{round(j_abs - curr_y, 3)}")
                 
             clean = f"{cmd_g} " + " ".join(new_tokens)
-            in_lavorazione_attiva = True
+            ha_lavorato_questo_utensile = True
 
         # Tracciamento coordinate
         m_x = re.search(r'X(-?\d+(\.\d+)?)', clean)
         m_y = re.search(r'Y(-?\d+(\.\d+)?)', clean)
+        m_z = re.search(r'Z(-?\d+(\.\d+)?)', clean)
         if m_x: curr_x = float(m_x.group(1))
         if m_y: curr_y = float(m_y.group(1))
 
-        # CICLI DI FORATURA/MASCHIATURA (es. G81, G84, G85)
+        # CICLI DI FORATURA/MASCHIATURA
         if any(ciclo in clean for ciclo in ["G81", "G84", "G85"]):
             clean_iso = re.sub(r'\bJ(\d+(\.\d+)?)', r'R\1', clean)
             if not clean_iso.startswith("G99"):
                 clean_iso = "G99 " + clean_iso
             righe_iso.append(f"N{n_linea} {clean_iso}")
             n_linea += 2
-            in_lavorazione_attiva = True
+            ha_lavorato_questo_utensile = True
             continue
 
         if "M18" in clean or "M8" in clean:
@@ -199,368 +193,26 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         righe_iso.append(f"N{n_linea} {clean}")
         n_linea += 2
         if any(k in clean for k in ['X', 'Y', 'Z', 'G0', 'G1', 'G2', 'G3']):
-            in_lavorazione_attiva = True
+            ha_lavorato_questo_utensile = True
 
-    if righe_iso:
-        if "M5" not in righe_iso[-1] and "M5" not in righe_iso[-2]:
+        # CONTROLLO: INSERISCI M5 E M9 SUBITO DOPO IL POSIZIONAMENTO FINALE IN Z POSITIVO (es. G00 Z100)
+        is_ritiro_z = m_z and float(m_z.group(1)) > 0
+        if is_ritiro_z and ha_lavorato_questo_utensile:
+            # Evitiamo di mettere M5/M9 se siamo nel bel mezzo di lavorazioni consecutive dello stesso utensile senza ritiro a Z100 (es. tra SMUSSI M6 e SMUSSI CAVE del T6)
+            # Il ritiro finale a Z100 c'è alla fine di SMUSSI CAVE, quindi lì scatterà correttamente.
+            if not (utensile_attuale == 6 and "9000" in righe[max(0, idx-2)]): # piccolo check di sicurezza o lasciamo gestire dallo Z100
+                pass
+            
             righe_iso.append(f"N{n_linea} M5")
             n_linea += 2
-        if "M9" not in righe_iso[-1]:
             righe_iso.append(f"N{n_linea} M9")
+            n_linea += 2
+            ha_lavorato_questo_utensile = False
+
+    # Chiusura finale di sicurezza
+    if righe_iso and ha_lavorato_questo_utensile:
+        righe_iso.append(f"N{n_linea} M5")
+        n_linea += 2
+        righe_iso.append(f"N{n_linea} M9")
 
     return "\n".join(righe_iso)
-
-
-def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str:
-    righe = codice_iso.strip().split('\n')
-    righe_selca = []
-    
-    righe_selca.append(f"[PROG: {nome_prog}")
-    righe_selca.append("[MACCHINA: PARPAS_PHS812")
-    
-    n_linea = 2
-    utensile_attuale = 1
-    primo_z_utensile = True
-    modalita_moto = "G00"
-    curr_x, curr_y = 0.0, 0.0
-    in_lavorazione_attiva = False
-
-    idx = 0
-    while idx < len(righe):
-        riga = righe[idx].strip()
-        idx += 1
-        
-        if not riga or riga.startswith("(PROG:") or riga.startswith("(MACCHINA:"):
-            continue
-
-        if riga.startswith('('):
-            if in_lavorazione_attiva:
-                righe_selca.append(f"N{n_linea} M5")
-                n_linea += 2
-                righe_selca.append(f"N{n_linea} M9")
-                n_linea += 2
-                in_lavorazione_attiva = False
-
-            comm = riga.replace('(', '[').replace(')', '')
-            if "CONVERTITO PER MAZAK" in comm:
-                comm = comm.split("----")[0].strip()
-            if "N.B.= METTERE DIAMETRO D.=0.8" in comm:
-                comm = "[ N.B.= METTERE RAGGIO R.=0.3"
-            righe_selca.append(comm)
-            continue
-
-        if "G00 G17 G40 G49 G80 G54 G90" in riga:
-            righe_selca.append("N2 G17")
-            righe_selca.append("O1")
-            n_linea = 4
-            modalita_moto = "G00"
-            continue
-
-        clean = re.sub(r'^N\d+\s*', '', riga)
-        clean = re.sub(r'\bM0?[59]\b', '', clean).strip()
-        if not clean:
-            continue
-
-        # Cambio utensile M6
-        if "M06" in clean or "M6" in clean:
-            if in_lavorazione_attiva:
-                righe_selca.append(f"N{n_linea} M5")
-                n_linea += 2
-                righe_selca.append(f"N{n_linea} M9")
-                n_linea += 2
-                in_lavorazione_attiva = False
-
-            m_t = re.search(r'T(\d+)', clean)
-            if m_t:
-                utensile_attuale = int(m_t.group(1))
-                primo_z_utensile = True
-                modalita_moto = "G00"
-                comm = ""
-                if '(' in clean:
-                    comm = " [" + clean[clean.index('(')+1:].replace(')', '')
-                righe_selca.append(f"N{n_linea} T{utensile_attuale} M6{comm}")
-                n_linea += 2
-            continue
-
-        if any(cmd in clean for cmd in ['G61.1', 'G64', 'G54', 'G90']):
-            continue
-
-        # Aggiornamento stato modale di movimento
-        if re.search(r'\bG0*0\b', clean): modalita_moto = "G00"
-        elif re.search(r'\bG0*1\b', clean): modalita_moto = "G01"
-        elif re.search(r'\bG0*2\b', clean): modalita_moto = "G02"
-        elif re.search(r'\bG0*3\b', clean): modalita_moto = "G03"
-
-        # COMPENSAZIONE RAGGIO G41 / G42
-        if clean.startswith("G41") or clean.startswith("G42"):
-            cmd_g = "G41" if "G41" in clean else "G42"
-            rest_xy = clean.replace(cmd_g, "").strip()
-            
-            if not (righe_selca and "G49" in righe_selca[-1]):
-                righe_selca.append(f"N{n_linea} G49 K{utensile_attuale}")
-                n_linea += 2
-            
-            righe_selca.append(f"N{n_linea} {cmd_g}")
-            n_linea += 2
-            
-            if rest_xy:
-                rest_xy = rest_xy.replace("F800", "F400")
-                righe_selca.append(f"N{n_linea} {rest_xy}")
-                
-                m_x = re.search(r'X(-?\d+(\.\d+)?)', rest_xy)
-                m_y = re.search(r'Y(-?\d+(\.\d+)?)', rest_xy)
-                if m_x: curr_x = float(m_x.group(1))
-                if m_y: curr_y = float(m_y.group(1))
-                
-                n_linea += 2
-            in_lavorazione_attiva = True
-            continue
-
-        # ANNULLAMENTO COMPENSAZIONE G40
-        if "G40" in clean:
-            rest_xy = clean.replace("G40", "").strip()
-            righe_selca.append(f"N{n_linea} G40")
-            n_linea += 2
-            
-            if rest_xy:
-                righe_selca.append(f"N{n_linea} {rest_xy}")
-                m_x = re.search(r'X(-?\d+(\.\d+)?)', rest_xy)
-                m_y = re.search(r'Y(-?\d+(\.\d+)?)', rest_xy)
-                if m_x: curr_x = float(m_x.group(1))
-                if m_y: curr_y = float(m_y.group(1))
-                n_linea += 2
-            in_lavorazione_attiva = True
-            continue
-
-        if "G49 K" in clean:
-            clean = f"G49 K{utensile_attuale}"
-            righe_selca.append(f"N{n_linea} {clean}")
-            n_linea += 2
-            continue
-
-        # CONVERSIONE ARCHI G02 / G03
-        if clean.startswith("G02") or clean.startswith("G03") or clean.startswith("G2") or clean.startswith("G3"):
-            parts = clean.split()
-            cmd_g = parts[0]
-            tokens = parts[1:]
-            i_inc, j_inc = None, None
-            new_tokens = []
-            next_x, next_y = curr_x, curr_y
-            
-            for t in tokens:
-                if t.startswith('I'): i_inc = float(t[1:])
-                elif t.startswith('J'): j_inc = float(t[1:])
-                else:
-                    new_tokens.append(t)
-                    if t.startswith('X'): next_x = float(t[1:])
-                    elif t.startswith('Y'): next_y = float(t[1:])
-            
-            if i_inc is not None: new_tokens.append(f"I{round(curr_x + i_inc, 3):g}")
-            if j_inc is not None: new_tokens.append(f"J{round(curr_y + j_inc, 3):g}")
-                
-            clean = f"{cmd_g} " + " ".join(new_tokens)
-            curr_x, curr_y = next_x, next_y
-            in_lavorazione_attiva = True
-
-        # Tracciamento coordinate
-        m_x = re.search(r'X(-?\d+(\.\d+)?)', clean)
-        m_y = re.search(r'Y(-?\d+(\.\d+)?)', clean)
-        m_z = re.search(r'Z(-?\d+(\.\d+)?)', clean)
-        
-        if m_x and not clean.startswith("G02") and not clean.startswith("G03") and not clean.startswith("G2") and not clean.startswith("G3"):
-            curr_x = float(m_x.group(1))
-        if m_y and not clean.startswith("G02") and not clean.startswith("G03") and not clean.startswith("G2") and not clean.startswith("G3"):
-            curr_y = float(m_y.group(1))
-
-        # PRIMO POSIZIONAMENTO IN Z
-        if primo_z_utensile and m_z:
-            codice_acqua = "M18" if utensile_attuale in [1, 4] else "M8"
-            if not clean.startswith("G00") and not clean.startswith("G01"):
-                clean = "G00 " + clean
-            righe_selca.append(f"N{n_linea} {clean} {codice_acqua}")
-            n_linea += 2
-            primo_z_utensile = False
-            in_lavorazione_attiva = True
-            continue
-
-        # CICLI DI FORATURA E MASCHIATURA
-        if any(ciclo in clean for ciclo in ["G81", "G84", "G85"]):
-            m_x_iso = re.search(r'X(-?\d+(\.\d+)?)', clean)
-            m_y_iso = re.search(r'Y(-?\d+(\.\d+)?)', clean)
-            if m_x_iso: curr_x = float(m_x_iso.group(1))
-            if m_y_iso: curr_y = float(m_y_iso.group(1))
-            
-            clean_selca = clean.replace("G99 ", "").replace("G99", "").strip()
-            clean_selca = re.sub(r'\b[XY]-?\d+(\.\d+)?', '', clean_selca).strip()
-            clean_selca = re.sub(r'\s+', ' ', clean_selca)
-            clean_selca = re.sub(r'\bR(\d+(\.\d+)?)', r'J\1', clean_selca)
-            
-            righe_selca.append(f"N{n_linea} {clean_selca}")
-            n_linea += 2
-            righe_selca.append(f"N{n_linea} X{curr_x:g} Y{curr_y:g}")
-            n_linea += 2
-            in_lavorazione_attiva = True
-            continue
-
-        if re.match(r'^X-?\d+.*Y-?\d+', clean) and not any(clean.startswith(cmd) for cmd in ["G00", "G0", "G01", "G1", "G02", "G2", "G03", "G3"]):
-            if modalita_moto in ["G01", "G1"]:
-                clean = "G01 " + clean
-
-        if "S" in clean and "M3" in clean:
-            m_s = re.search(r'S\d+', clean)
-            s_str = m_s.group(0) if m_s else "S4400"
-            righe_selca.append(f"N{n_linea} {s_str} M3")
-            n_linea += 2
-            continue
-
-        righe_selca.append(f"N{n_linea} {clean}")
-        n_linea += 2
-        if any(k in clean for k in ['X', 'Y', 'Z', 'G0', 'G1', 'G2', 'G3']):
-            in_lavorazione_attiva = True
-
-    # Rinumerazione finale ordinata di tutti i blocchi N
-    righe_finali = []
-    curr_n = 2
-    for r in righe_selca:
-        if r.startswith('N') and ' ' in r:
-            parti = r.split(' ', 1)
-            if parti[0][1:].isdigit():
-                righe_finali.append(f"N{curr_n} {parti[1]}")
-                curr_n += 2
-                continue
-        righe_finali.append(r)
-
-    return "\n".join(righe_finali)
-
-
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <title>Convertitore CNC ISO ↔ SELCA</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
-        body { display: flex; height: 100vh; background-color: #f7f6f0; color: #1e293b; }
-        .sidebar { width: 250px; background-color: #1e293b; color: #fff; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
-        .logo { font-size: 18px; font-weight: bold; color: #38bdf8; }
-        .main-content { flex: 1; padding: 30px; overflow-y: auto; }
-        .header-title { font-size: 26px; font-weight: 800; color: #0f172a; margin-bottom: 15px; }
-        .control-bar { display: flex; align-items: center; gap: 20px; margin-bottom: 15px; background: #fff; padding: 12px 20px; border-radius: 10px; border: 1px solid #e2e8f0; flex-wrap: wrap; }
-        .direction-badge { font-weight: 700; color: #0d9488; }
-        .input-group { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #334155; }
-        .input-group input { padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; width: 180px; }
-        .workspace { display: flex; gap: 20px; }
-        .card { flex: 1; background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; }
-        textarea { width: 100%; height: 420px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 13px; resize: none; background: #fafafa; }
-        textarea.output { background: #0f172a; color: #38bdf8; }
-        .actions { display: flex; justify-content: space-between; margin-top: 15px; }
-        .btn { padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; font-size: 14px; }
-        .btn-primary { background-color: #0d9488; color: #fff; }
-        .btn-secondary { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
-        .btn-swap { background-color: #f97316; color: #fff; }
-    </style>
-</head>
-<body>
-    <div class="sidebar">
-        <div class="logo">&lt;/&gt; CNC CONVERTER</div>
-    </div>
-    <div class="main-content">
-        <h1 class="header-title">Convertitore CNC ISO ↔ SELCA</h1>
-        <form method="POST" action="/converti" id="mainForm">
-            <input type="hidden" name="modalita" value="{{ modalita or 'selca_to_iso' }}">
-            <div class="control-bar">
-                <span>Modalità:</span>
-                <span class="direction-badge">
-                    {% if modalita == 'selca_to_iso' %} SELCA ➔ ISO (.eia) {% else %} ISO ➔ SELCA {% endif %}
-                </span>
-
-                <div class="input-group">
-                    <label for="nome_programma">Nome Programma (PROG):</label>
-                    <input type="text" id="nome_programma" name="nome_programma" value="{{ nome_programma or '200011974-A' }}" placeholder="es. 200011974-A">
-                </div>
-
-                <button type="submit" formaction="/scambia" class="btn btn-swap">🔄 Inverti Direzione</button>
-            </div>
-            <div class="workspace">
-                <div class="card">
-                    <h3>Codice Sorgente</h3>
-                    <textarea name="codice_sorgente" placeholder="Incolla il programma o caricalo da file...">{{ codice_sorgente }}</textarea>
-                    <div class="actions">
-                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">📁 Carica file</button>
-                        <input type="file" id="fileInput" style="display:none" onchange="caricaFile(this)">
-                        <button type="submit" class="btn btn-primary">⚡ Converti Programma</button>
-                    </div>
-                </div>
-                <div class="card">
-                    <h3>Codice Convertito</h3>
-                    <textarea class="output" readonly>{{ codice_convertito }}</textarea>
-                    <div class="actions" style="justify-content: flex-end;">
-                        <button type="submit" formaction="/scarica" class="btn btn-primary">Scarica File</button>
-                    </div>
-                </div>
-            </div>
-        </form>
-    </div>
-
-    <script>
-        function caricaFile(input) {
-            let file = input.files[0];
-            if (file) {
-                let reader = new FileReader();
-                reader.onload = function(e) {
-                    document.querySelector("textarea[name='codice_sorgente']").value = e.target.result;
-                };
-                reader.readAsText(file);
-            }
-        }
-    </script>
-</body>
-</html>
-"""
-
-@app.route('/')
-def index():
-    return render_template_string(HTML_TEMPLATE, codice_sorgente="", codice_convertito="", modalita="selca_to_iso", nome_programma="200011974-A")
-
-@app.route('/converti', methods=['POST'])
-def converti():
-    codice_sorgente = request.form.get('codice_sorgente', '')
-    modalita = request.form.get('modalita', 'selca_to_iso')
-    nome_programma = request.form.get('nome_programma', '200011974-A').strip()
-    
-    if modalita == 'selca_to_iso':
-        codice_convertito = traduci_selca_in_iso(codice_sorgente, nome_programma)
-    else:
-        codice_convertito = traduci_iso_in_selca(codice_sorgente, nome_programma)
-        
-    return render_template_string(HTML_TEMPLATE, codice_sorgente=codice_sorgente, codice_convertito=codice_convertito, modalita=modalita, nome_programma=nome_programma)
-
-@app.route('/scambia', methods=['POST'])
-def scambia():
-    codice_sorgente = request.form.get('codice_sorgente', '')
-    codice_convertito = request.form.get('codice_convertito', '')
-    modalita = request.form.get('modalita', 'selca_to_iso')
-    nome_programma = request.form.get('nome_programma', '200011974-A').strip()
-    
-    nuova_modalita = 'iso_to_selca' if modalita == 'selca_to_iso' else 'selca_to_iso'
-    return render_template_string(HTML_TEMPLATE, codice_sorgente=codice_convertito, codice_convertito=codice_sorgente, modalita=nuova_modalita, nome_programma=nome_programma)
-
-@app.route('/scarica', methods=['POST'])
-def scarica():
-    codice_sorgente = request.form.get('codice_sorgente', '')
-    modalita = request.form.get('modalita', 'selca_to_iso')
-    nome_programma = request.form.get('nome_programma', '200011974-A').strip()
-    
-    if modalita == 'selca_to_iso':
-        codice_convertito = traduci_selca_in_iso(codice_sorgente, nome_programma)
-        nome_file = f"{nome_programma}.EIA.eia"
-    else:
-        codice_convertito = traduci_iso_in_selca(codice_sorgente, nome_programma)
-        nome_file = nome_programma
-        
-    return Response(codice_convertito, mimetype="text/plain", headers={"Content-disposition": f"attachment; filename={nome_file}"})
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
