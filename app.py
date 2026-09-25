@@ -5,14 +5,18 @@ import os
 app = Flask(__name__)
 
 def converti_commento_in_selca(linea: str) -> str:
-    """Converte i commenti da formato ISO (COMMENTO) a SELCA [COMMENTO]"""
-    linea = re.sub(r'\((.*?)\)', r'[\1]', linea)
+    """Converte i commenti da ISO (COMMENTO) a SELCA [COMMENTO (senza chiusura)"""
+    # Sostituisce '(' con '[' e rimuove completamente ')'
+    linea = linea.replace('(', '[').replace(')', '')
     return linea
 
 def converti_commento_in_iso(linea: str) -> str:
-    """Converte i commenti da formato SELCA [COMMENTO a ISO (COMMENTO"""
-    # Cambia '[' in '(' e rimuove ']' lasciando vuoto al suo posto
-    linea = linea.replace('[', '(').replace(']', '')
+    """Converte i commenti da SELCA [COMMENTO a ISO (COMMENTO)"""
+    if '[' in linea:
+        # Sostituisce '[' con '(' e aggiunge ')' a fine riga se manca
+        linea = linea.replace('[', '(')
+        if not linea.endswith(')'):
+            linea = linea + ')'
     return linea
 
 def traduci_iso_in_selca(codice_iso: str, nome_programma: str = "") -> str:
