@@ -17,12 +17,13 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not riga_grezza:
             continue
             
-        # Conservazione e conversione dei commenti (da [...] a (...))
+        # Gestione rigorosa dei commenti: se inizia con [ o (
         if riga_grezza.startswith('[') or riga_grezza.startswith('('):
-            commento = riga_grezza.replace('[', '(').replace(']', ')')
-            if not commento.endswith(')'):
-                commento += ')'
-            righe_iso.append(commento)
+            # Rimuove le parentesi iniziali e finali esistenti (sia quadre che tonde)
+            contenuto_commento = riga_grezza.lstrip('[(').rstrip('])').strip()
+            # Ricostruisce il commento formattato unicamente con (...)
+            commento_formattato = f"({contenuto_commento})"
+            righe_iso.append(commento_formattato)
             continue
             
         # Rimuove il vecchio numero di blocco se presente
@@ -159,7 +160,6 @@ def scarica():
     nome_programma = request.form.get('nome_programma', '200011974-A').strip()
     codice_convertito = converti_selca_a_iso(codice_sorgente)
     
-    # Pulisce l'estensione se l'utente ha scritto .eia nel campo
     nome_file_pulito = re.sub(r'\.eia$', '', nome_programma, flags=re.IGNORECASE)
     
     return Response(
