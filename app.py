@@ -46,11 +46,13 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     righe_iso.append("(-------------------------------------------------------------------------------)")
     
     # Elenco utensili pulito per l'intestazione
-    for t_id in [1, 2, 3, 4, 5, 6]:
+    for t_id in [1, 2, 3, 4, 6, 5]:
         desc = info_utensili[t_id]["desc"]
         if t_id == 6:
-            righe_iso.append(f"( T{t_id} CENTRINO MINIMASTER SECO - D.12 - INSERIRE RAGGIO - UTILIZZA LA COMPENSAZIONE)")
+            righe_iso.append(f"( T6 CENTRINO MINIMASTER SECO - D.12 - INSERIRE RAGGIO - UTILIZZA LA COMPENSAZIONE)")
             righe_iso.append("( N.B.= METTERE DIAMETRO D.=0.8 )")
+        elif t_id in [1, 2, 3]:
+            righe_iso.append(f"( {desc} - INSERIRE RAGGIO)")
         else:
             righe_iso.append(f"( {desc})")
         righe_iso.append("(-------------------------------------------------------------------------------)")
@@ -67,13 +69,11 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not riga_p:
             continue
 
-        # Salta intestazioni Selca grezze e metadati già gestiti
         if any(riga_p.startswith(k) for k in ["[CLIENTE:", "[DISEGNO:", "[DESCRIZIONE:", "[MATERIALE:", "[Data:", "[PROG:", "[MACCHINA:", "[PRIMA"]):
             continue
         if riga_p in ['N2 G17', 'O1'] or riga_p.startswith('(') and all(c in '(- )' for c in riga_p):
             continue
 
-        # Gestione commenti descrittivi racchiusi tra parentesi quadre nel corpo
         if riga_p.startswith('['):
             comm = riga_p.replace('[', '(')
             if not comm.endswith(')'): 
@@ -86,13 +86,11 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             continue
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
-        
-        # Pulizia comandi superflui
         clean = re.sub(r'\bM0?[59]\b', '', clean).strip()
         if not clean:
             continue
 
-        # --- 2. GESTIONE CAMBIO UTENSILE (T... M6) ---
+        # --- GESTIONE CAMBIO UTENSILE ---
         if re.search(r'\bT\d+\b', clean) and ('M6' in clean or 'M06' in clean):
             if in_lavorazione_attiva:
                 righe_iso.append(f"N{n_linea} G64")
@@ -117,7 +115,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 modo_movimento_corrente = "G00"
                 continue
 
-        # --- 3. AVVIO MANDRINO (S... M3) ---
+        # --- AVVIO MANDRINO ---
         if re.search(r'\bS\d+\s+M3\b', clean):
             s_match = re.search(r'S(\d+)', clean)
             s_val = s_match.group(1) if s_match else ""
@@ -138,27 +136,23 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             in_lavorazione_attiva = True
             continue
 
-        # Conversione cicli fissi G81 / G84 con supporto R3 (come da file Mazak target)
+        # Cicli fissi G81 / G84 con supporto R3
         if clean.startswith("G81") or clean.startswith("G84"):
             parts = clean.split()
             cmd_g = parts[0]
             resto = " ".join(parts[1:])
-            # Sostituisce J3 con R3 tipico dei controlli Mazak/Fanuc
             resto = re.sub(r'J\d+', 'R3', resto)
             clean = f"G99 {cmd_g} {resto}"
 
-        # Intercettazione posizionamento Z in alto per attivare G61.1
         if clean.startswith("Z") and modo_movimento_corrente == "G00":
             righe_iso.append(f"N{n_linea} {clean}")
             n_linea += 2
             attesa_g61 = True
             continue
 
-        # Rimozione dei comandi di compensazione Selca proprietari G49 K...
         if clean.startswith("G49"):
             continue
 
-        # Gestione G41 / G42 diretta
         if clean in ["G41", "G42"] and idx < len(righe):
             prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
             prossima = re.sub(r'\bM0?[59]\b', '', prossima).strip()
@@ -179,7 +173,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 in_lavorazione_attiva = True
                 continue
 
-        # Gestione G40
         if clean == "G40" and idx < len(righe):
             prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
             prossima = re.sub(r'\bM0?[59]\b', '', prossima).strip()
@@ -190,7 +183,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 in_lavorazione_attiva = True
                 continue
 
-        # Conversione Archi G02 / G03 con coordinate incrementali I/J rispetto alla posizione corrente
         if clean.startswith("G02") or clean.startswith("G03") or clean.startswith("G2") or clean.startswith("G3"):
             parts = clean.split()
             cmd_g = parts[0].replace("G2", "G02").replace("G3", "G03")
@@ -282,10 +274,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     return "\n".join(righe_iso)
 
 
-def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str:
-    return codice_iso
-
-
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="it">
@@ -320,7 +308,6 @@ HTML_TEMPLATE = """
     <div class="main-content">
         <h1 class="header-title">Convertitore CNC ISO ⇄ SELCA</h1>
         <form method="POST" action="/converti" id="mainForm">
-            <input type="hidden" name="modalita" value="selca_to_iso">
             <div class="control-bar">
                 <span>Modalità:</span>
                 <span class="direction-badge">SELCA ➔ ISO (.eia)</span>
@@ -381,7 +368,8 @@ def scarica():
     codice_sorgente = request.form.get('codice_sorgente', '')
     nome_programma = request.form.get('nome_programma', '200011974-A').strip()
     codice_convertito = traduci_selca_in_iso(codice_sorgente, nome_programma)
-    return Response(codice_convertito, mimetype="text/plain", headers={"Content-disposition": f"attachment; filename={nome_programma}.EIA.eia"})
+    # Estensione pulita senza doppioni (.eia)
+    return Response(codice_convertito, mimetype="text/plain", headers={"Content-disposition": f"attachment; filename={nome_programma}.eia"})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
