@@ -20,26 +20,22 @@ def traduci_selca_in_iso(codice_selca: str) -> str:
     righe = codice_selca.strip().split('\n')
     righe_iso = []
 
-    # Mappa degli utensili presente nel programma per la predisposizione (T1 -> T2, ecc.)
     utensili = []
     for r in righe:
         m = re.search(r'\bT(\d+)\b', r)
         if m and int(m.group(1)) not in utensili:
             utensili.append(int(m.group(1)))
 
-    # Mappa dei parametri avanzamento e refrigerante per ciascun utensile
-    # basato sullo standard ISO del pezzo 200011974-A
     info_utensili = {
         1: {"s": 4400, "m_cool": "M51", "next_t": 2},
-        2: {"s": 1300, "m_cool": "M8",  "next_t": 3, "f_work": "F250"},
-        3: {"s": 2600, "m_cool": "M8",  "next_t": 4, "f_work": "F400"},
+        2: {"s": 1300, "m_cool": "M8",  "next_t": 3},
+        3: {"s": 2600, "m_cool": "M8",  "next_t": 4},
         4: {"s": 8400, "m_cool": "M51", "next_t": 6},
         6: {"s": 4000, "m_cool": "M8",  "next_t": 5},
         5: {"s": 500,  "m_cool": "M8",  "next_t": 1}
     }
 
     n_linea = 2
-    # Riga 2 iniziale ISO
     righe_iso.append("N2 G00 G17 G40 G49 G80 G54 G90\n")
     n_linea += 2
 
@@ -56,20 +52,16 @@ def traduci_selca_in_iso(codice_selca: str) -> str:
         if not riga_p:
             continue
 
-        # Commenti d'intestazione ed eseguibili
         if riga_p.startswith('['):
             comm_iso = converti_commento_in_iso(riga_p)
-            # Modifica specifica per la nota D.=0.8 su T6
             if "METTERE RAGGIO R.=0.3" in comm_iso:
                 comm_iso = "( N.B.= METTERE DIAMETRO D.=0.8 )"
             righe_iso.append(comm_iso)
             continue
 
-        # Salta comandi di start SELCA
         if riga_p in ['O1', 'N2 G17']:
             continue
 
-        # Gestione Cambio Utensile T... M6
         if re.search(r'\bT\d+\s+M6\b', riga_p) or (re.search(r'\bT\d+\b', riga_p) and 'M6' in riga_p):
             m_t = re.search(r'T(\d+)', riga_p)
             if m_t:
@@ -85,12 +77,10 @@ def traduci_selca_in_iso(codice_selca: str) -> str:
                 g61_attivo = False
                 continue
 
-        # Gestione S... M3 (Velocità mandrino)
         if re.search(r'\bS\d+\s+M3\b', riga_p):
             s_match = re.search(r'S(\d+)', riga_p)
             s_val = s_match.group(1) if s_match else ""
             
-            # Applica parametri specifici se definiti
             info = info_utensili.get(utensile_attuale, {})
             if info:
                 s_val = str(info.get("s", s_val))
@@ -103,20 +93,16 @@ def traduci_selca_in_iso(codice_selca: str) -> str:
             n_linea += 2
             continue
 
-        # Filtra comandi SELCA non usati in ISO
         if any(cmd in riga_p for cmd in ['G49 K', 'M18', 'M8', 'M9', 'M5']):
             continue
 
-        # Rimozione vecchio prefisso N...
         clean = re.sub(r'^N\d+\s*', '', riga_p)
 
-        # Traccia coordinate correnti X, Y
         mx = re.search(r'X([-\d.]+)', clean)
         my = re.search(r'Y([-\d.]+)', clean)
         if mx: ultimo_x = float(mx.group(1))
         if my: ultimo_y = float(my.group(1))
 
-        # Gestione G61.1 prima di lavorare e G64 prima dei rapidi Z
         if ('G01' in clean or 'G02' in clean or 'G03' in clean) and not g61_attivo:
             righe_iso.append(f"N{n_linea} G61.1")
             n_linea += 2
@@ -127,7 +113,6 @@ def traduci_selca_in_iso(codice_selca: str) -> str:
             n_linea += 2
             g61_attivo = False
 
-        # Conversione Archi G02 / G03 (da centro assoluto SELCA a relativo ISO)
         if 'G02' in clean or 'G03' in clean:
             mi = re.search(r'I([-\d.]+)', clean)
             mj = re.search(r'J([-\d.]+)', clean)
@@ -139,29 +124,24 @@ def traduci_selca_in_iso(codice_selca: str) -> str:
                 clean = re.sub(r'I[-\d.]+', f"I{rel_i:g}", clean)
                 clean = re.sub(r'J[-\d.]+', f"J{rel_j:g}", clean)
 
-        # Compensazione G41/G42/G40 fusa con coordinate
         if clean.startswith('G41') or clean.startswith('G42') or clean.startswith('G40'):
-            # Se la riga successiva contiene movimento, le unisce
             if idx < len(righe) and not righe[idx].strip().startswith('['):
                 prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
                 if any(k in prossima for k in ['X', 'Y', 'Z']):
                     clean = f"{clean} {prossima}"
                     idx += 1
 
-        # Sostituzione avanzamenti specifici utensili 2 e 3 in finitura
         if utensile_attuale in [2, 3] and 'F650' in clean:
             clean = clean.replace('F650', 'F250')
         elif utensile_attuale in [2, 3] and 'F800' in clean:
             clean = clean.replace('F800', 'F400')
 
-        # Cicli Fissi G81 e G84
         if 'G81' in clean:
             clean = clean.replace('G81', 'G99 G81').replace('J', 'R')
         elif 'G84' in clean:
             clean = clean.replace('G84', 'G99 G84').replace('J', 'R')
-            clean = re.sub(r'F\d+', 'F1', clean) # Passo F1 su ISO Mazak
+            clean = re.sub(r'F\d+', 'F1', clean)
 
-        # Formattazione Z rapido (es. Z3)
         if clean.startswith('G00 Z'):
             clean = clean.replace('G00 ', '')
 
@@ -216,11 +196,12 @@ HTML_TEMPLATE = """
         .direction-badge { font-weight: 700; color: #0d9488; }
         .workspace { display: flex; gap: 20px; }
         .card { flex: 1; background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; }
-        textarea { width: 100%; height: 440px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 13px; resize: none; background: #fafafa; }
+        textarea { width: 100%; height: 420px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 13px; resize: none; background: #fafafa; }
         textarea.output { background: #0f172a; color: #38bdf8; }
         .actions { display: flex; justify-content: space-between; margin-top: 15px; }
         .btn { padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; font-size: 14px; }
         .btn-primary { background-color: #0d9488; color: #fff; }
+        .btn-secondary { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
         .btn-swap { background-color: #f97316; color: #fff; }
     </style>
 </head>
@@ -229,8 +210,8 @@ HTML_TEMPLATE = """
         <div class="logo">&lt;/&gt; CNC CONVERTER</div>
     </div>
     <div class="main-content">
-        <h1 class="header-title">Convertitore CNC ISO ↔ SELCA (Identico)</h1>
-        <form method="POST" action="/converti">
+        <h1 class="header-title">Convertitore CNC ISO ↔ SELCA</h1>
+        <form method="POST" action="/converti" id="mainForm">
             <input type="hidden" name="modalita" value="{{ modalita or 'selca_to_iso' }}">
             <div class="control-bar">
                 <span>Modalità:</span>
@@ -242,8 +223,10 @@ HTML_TEMPLATE = """
             <div class="workspace">
                 <div class="card">
                     <h3>Codice Sorgente</h3>
-                    <textarea name="codice_sorgente" placeholder="Incolla il programma qui...">{{ codice_sorgente }}</textarea>
+                    <textarea name="codice_sorgente" placeholder="Incolla il programma o caricalo da file...">{{ codice_sorgente }}</textarea>
                     <div class="actions">
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">📁 Carica file</button>
+                        <input type="file" id="fileInput" style="display:none" onchange="caricaFile(this)">
                         <button type="submit" class="btn btn-primary">⚡ Converti Programma</button>
                     </div>
                 </div>
@@ -257,6 +240,19 @@ HTML_TEMPLATE = """
             </div>
         </form>
     </div>
+
+    <script>
+        function caricaFile(input) {
+            let file = input.files[0];
+            if (file) {
+                let reader = new FileReader();
+                reader.onload = function(e) {
+                    document.querySelector("textarea[name='codice_sorgente']").value = e.target.result;
+                };
+                reader.readAsText(file);
+            }
+        }
+    </script>
 </body>
 </html>
 """
