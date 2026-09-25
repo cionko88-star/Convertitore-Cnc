@@ -17,26 +17,29 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not riga_grezza:
             continue
             
-        # Gestione commenti e utensili che iniziano con [ o (
+        # Gestione righe che sono PURAMENTE commenti (iniziano con [ o ()
         if riga_grezza.startswith('[') or riga_grezza.startswith('('):
             commento = riga_grezza
-            # Sostituisce la parentesi quadra iniziale con la tonda aperta
             if commento.startswith('['):
                 commento = '(' + commento[1:]
-            
-            # Sostituisce tutte le altre parentesi quadre interne/finali con tonde
             commento = commento.replace('[', '(').replace(']', ')')
-            
-            # Si assicura che finisca con la parentesi tonda chiusa
             if not commento.endswith(')'):
                 commento += ')'
-                
             righe_iso.append(commento)
             continue
             
         # Rimuove il vecchio numero di blocco se presente
         clean = re.sub(r'^N\d+\s*', '', riga_grezza)
         if not clean:
+            continue
+            
+        # Gestione commenti inline (es. T1 M6 [ FRESA... -> T1 M6 ( FRESA...))
+        if '[' in clean or ']' in clean:
+            clean = clean.replace('[', '(').replace(']', ')')
+            if not clean.endswith(')'):
+                clean += ')'
+            righe_iso.append(f"N{n_linea} {clean}")
+            n_linea += 2
             continue
             
         # Spaziatura coordinate appiccicate
