@@ -8,14 +8,14 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     righe = codice_selca.strip().split('\n')
     righe_iso = []
     
-    # Tabella dati utensili standard
+    # Tabella dati utensili basata sui riferimenti Mazak
     info_utensili = {
         1: {"s": 4400, "m_cool": "M51", "next_t": 2, "desc": "T1 - FRESA 3 INS. SPALL. RETTO - D.20"},
-        2: {"s": 1300, "m_cool": "M8",  "next_t": 3, "desc": "T2 - FRESA 4TG. MET. DURO - D.16"},
-        3: {"s": 2600, "m_cool": "M8",  "next_t": 4, "desc": "T3 - FRESA PASSO VAR. 4TG. MET. DURO"},
-        4: {"s": 8400, "m_cool": "M51", "next_t": 6, "desc": "T4 - PUNTA FORATA MET. DURO"},
-        6: {"s": 4000, "m_cool": "M8",  "next_t": 5, "desc": "T6 - CENTRINO MINIMASTER"},
-        5: {"s": 500,  "m_cool": "M8",  "next_t": 1, "desc": "T5 - MASCHIO CIECO"}
+        2: {"s": 1300, "m_cool": "M8",  "next_t": 3, "desc": "T2 - FRESA 4TG. MET. DURO  - D.16"},
+        3: {"s": 2600, "m_cool": "M8",  "next_t": 4, "desc": "T3 - FRESA PASSO VAR. 4TG. MET. DURO FRAISA - D.12"},
+        4: {"s": 8400, "m_cool": "M51", "next_t": 6, "desc": "T4 - PUNTA FORATA MET. DURO SECO SD205A - D.5.1"},
+        6: {"s": 4000, "m_cool": "M8",  "next_t": 5, "desc": "T6 - CENTRINO MINIMASTER SECO - D.0.8"},
+        5: {"s": 500,  "m_cool": "M8",  "next_t": 1, "desc": "T5 - MASCHIO CIECO SENZA PUNTA - M6"}
     }
 
     n_linea = 2
@@ -25,18 +25,36 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     modo_movimento_corrente = None  
     attesa_g61 = False
 
-    # --- 1. INTESTAZIONE INIZIALE COMPATTA E UNITA ---
-    righe_iso.append("( T2 FRESA 4TG. MET. DURO - D.16 - INSERIRE RAGGIO)")
-    righe_iso.append("(-------------------------------------------------------)")
-    righe_iso.append("( T3 FRESA PASSO VAR. 4TG. MET. DURO FRAISA - D.12 - INSERIRE RAGGIO)")
-    righe_iso.append("(-------------------------------------------------------)")
-    righe_iso.append("( T4 PUNTA FORATA MET. DURO SECO SD205A - D.5.1)")
-    righe_iso.append("(-------------------------------------------------------)")
-    righe_iso.append("( T6 CENTRINO MINIMASTER SECO - D.12 - INSERIRE RAGGIO - UTILIZZA LA COMPENSAZIONE)")
-    righe_iso.append("( N.B.= METTERE DIAMETRO D.=0.8 )")
-    righe_iso.append("(-------------------------------------------------------)")
-    righe_iso.append("( T5 MASCHIO CIECO SENZA PUNTA - M6)")
-    righe_iso.append("(-------------------------------------------------------)")
+    # --- 1. INTESTAZIONE INIZIALE FORMATO MAZAK ---
+    righe_iso.append(f"(PROG: {nome_prog}.EIA)")
+    righe_iso.append("(MACCHINA: MAZAK)")
+    righe_iso.append("(CLIENTE: TECHNE)")
+    righe_iso.append("(DISEGNO: 200011974)")
+    righe_iso.append("(DESCRIZIONE: PIASTRA INTERMEDIA SOFFIAGGIO)")
+    righe_iso.append("(MATERIALE: LAMIERA FE 445x640 SP.28)")
+    righe_iso.append("(Data: 07-08-18 CHRISTIAN ---- 06-05-2025 CONVERTITO PER MAZAK)")
+    righe_iso.append("(PRIMA PARTE)")
+    righe_iso.append("(STRINGERE IL PEZZO SULLO SPESSORE DI 335mm LASCIANDOLO SPORGENTE A DESTRA)")
+    righe_iso.append("(ALMENO PER 30mm)")
+    righe_iso.append("(APPOGGIO \"X\" A SINISTRA FISSO)")
+    righe_iso.append("(-------------------------------------------------------------------------------)")
+    righe_iso.append("(SI ESEGUE: INTESTATURA DEL PEZZO - ESECUZIONE CAVE E N.4 FORI M6)")
+    righe_iso.append("(-------------------------------------------------------------------------------)")
+    righe_iso.append("(LO ZERO X E' SUL LATO A SINISTRA CALCOLANDO IL SOVRA-METALLO)")
+    righe_iso.append("(LO ZERO Y E' SUL LATO VERSO L'OPERATORE)")
+    righe_iso.append("(LO ZERO Z E' SUL PIANO SUPERIORE DEL PEZZO)")
+    righe_iso.append("(-------------------------------------------------------------------------------)")
+    
+    # Elenco utensili pulito per l'intestazione
+    for t_id in [1, 2, 3, 4, 5, 6]:
+        desc = info_utensili[t_id]["desc"]
+        if t_id == 6:
+            righe_iso.append(f"( T{t_id} CENTRINO MINIMASTER SECO - D.12 - INSERIRE RAGGIO - UTILIZZA LA COMPENSAZIONE)")
+            righe_iso.append("( N.B.= METTERE DIAMETRO D.=0.8 )")
+        else:
+            righe_iso.append(f"( {desc})")
+        righe_iso.append("(-------------------------------------------------------------------------------)")
+    
     righe_iso.append("")
     righe_iso.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
     n_linea += 2
@@ -49,19 +67,13 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         if not riga_p:
             continue
 
-        # Salta le righe iniziali e intermedie ridondanti o l'elenco utensili in cima al Selca
-        if any(riga_p.startswith(k) for k in ["[CLIENTE:", "[DISEGNO:", "[DESCRIZIONE:", "[MATERIALE:", "[Data:", "[PROG:", "[MACCHINA:"]):
+        # Salta intestazioni Selca grezze e metadati già gestiti
+        if any(riga_p.startswith(k) for k in ["[CLIENTE:", "[DISEGNO:", "[DESCRIZIONE:", "[MATERIALE:", "[Data:", "[PROG:", "[MACCHINA:", "[PRIMA"]):
             continue
-        if riga_p in ['N2 G17', 'O1']:
-            continue
-
-        # Filtra descrizioni utensili ripetute e linee tratteggiate vuote nel corpo
-        is_tool_desc = any(k in riga_p for k in ["FRESA 3 INS", "FRESA 4TG", "FRESA PASSO", "PUNTA FORATA MET", "CENTRINO MINIMASTER", "MASCHIO CIECO SENZA PUNTA"])
-        is_orphan_dash = riga_p.startswith('(') and all(c in '(- )' for c in riga_p) and not any(k in riga_p for k in ["SI ESEGUE", "STRINGERE", "APPOGGIO", "LO ZERO"])
-        if is_tool_desc or is_orphan_dash:
+        if riga_p in ['N2 G17', 'O1'] or riga_p.startswith('(') and all(c in '(- )' for c in riga_p):
             continue
 
-        # Gestione commenti descrittivi validi nel corpo
+        # Gestione commenti descrittivi racchiusi tra parentesi quadre nel corpo
         if riga_p.startswith('['):
             comm = riga_p.replace('[', '(')
             if not comm.endswith(')'): 
@@ -75,10 +87,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
         
-        # Elimina G49 K se presente
-        if re.search(r'\bG49\s+K', clean, re.IGNORECASE):
-            continue
-
+        # Pulizia comandi superflui
         clean = re.sub(r'\bM0?[59]\b', '', clean).strip()
         if not clean:
             continue
@@ -129,11 +138,24 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             in_lavorazione_attiva = True
             continue
 
-        # Intercettazione posizionamento Z in alto
+        # Conversione cicli fissi G81 / G84 con supporto R3 (come da file Mazak target)
+        if clean.startswith("G81") or clean.startswith("G84"):
+            parts = clean.split()
+            cmd_g = parts[0]
+            resto = " ".join(parts[1:])
+            # Sostituisce J3 con R3 tipico dei controlli Mazak/Fanuc
+            resto = re.sub(r'J\d+', 'R3', resto)
+            clean = f"G99 {cmd_g} {resto}"
+
+        # Intercettazione posizionamento Z in alto per attivare G61.1
         if clean.startswith("Z") and modo_movimento_corrente == "G00":
             righe_iso.append(f"N{n_linea} {clean}")
             n_linea += 2
             attesa_g61 = True
+            continue
+
+        # Rimozione dei comandi di compensazione Selca proprietari G49 K...
+        if clean.startswith("G49"):
             continue
 
         # Gestione G41 / G42 diretta
@@ -141,23 +163,16 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             prossima = re.sub(r'^N\d+\s*', '', righe[idx].strip())
             prossima = re.sub(r'\bM0?[59]\b', '', prossima).strip()
             if any(k in prossima for k in ['X', 'Y']):
-                prossima_mod = prossima.replace("F400", "F800")
-                
                 if attesa_g61:
                     righe_iso.append(f"N{n_linea} G61.1")
                     n_linea += 2
                     attesa_g61 = False
 
                 if modo_movimento_corrente != "G01":
-                    righe_iso.append(f"N{n_linea} {clean} G01 {prossima_mod}")
+                    righe_iso.append(f"N{n_linea} {clean} G01 {prossima}")
                     modo_movimento_corrente = "G01"
                 else:
-                    righe_iso.append(f"N{n_linea} {clean} {prossima_mod}")
-                
-                m_x = re.search(r'X(-?\d+(\.\d+)?)', prossima_mod)
-                m_y = re.search(r'Y(-?\d+(\.\d+)?)', prossima_mod)
-                if m_x: curr_x = float(m_x.group(1))
-                if m_y: curr_y = float(m_y.group(1))
+                    righe_iso.append(f"N{n_linea} {clean} {prossima}")
                 
                 n_linea += 2
                 idx += 1
@@ -170,18 +185,12 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             prossima = re.sub(r'\bM0?[59]\b', '', prossima).strip()
             if any(k in prossima for k in ['X', 'Y']):
                 righe_iso.append(f"N{n_linea} G40 {prossima}")
-                
-                m_x = re.search(r'X(-?\d+(\.\d+)?)', prossima)
-                m_y = re.search(r'Y(-?\d+(\.\d+)?)', prossima)
-                if m_x: curr_x = float(m_x.group(1))
-                if m_y: curr_y = float(m_y.group(1))
-                
                 n_linea += 2
                 idx += 1
                 in_lavorazione_attiva = True
                 continue
 
-        # Conversione Archi G02 / G03
+        # Conversione Archi G02 / G03 con coordinate incrementali I/J rispetto alla posizione corrente
         if clean.startswith("G02") or clean.startswith("G03") or clean.startswith("G2") or clean.startswith("G3"):
             parts = clean.split()
             cmd_g = parts[0].replace("G2", "G02").replace("G3", "G03")
