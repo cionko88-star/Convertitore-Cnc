@@ -96,11 +96,11 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
 
-        # COMPENSAZIONE RAGGIO: Gestione G42/G41 e inserimento G49 K3
+        # COMPENSAZIONE RAGGIO IN ISO: Aggiunge G49 K3 prima di G41/G42 se non già presente
         if clean.startswith("G42") or clean.startswith("G41"):
-            righe_iso.append(f"N{n_linea} G49 K3")
-            n_linea += 2
-            # Raddoppia l'avanzamento da F400 a F800 per la Mazak
+            if not (righe_iso and "G49" in righe_iso[-1]):
+                righe_iso.append(f"N{n_linea} G49 K3")
+                n_linea += 2
             clean_mod = clean.replace("F400", "F800")
             righe_iso.append(f"N{n_linea} {clean_mod}")
             n_linea += 2
@@ -108,13 +108,11 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
         # CICLI DI FORATURA (G81 / G84 / G80)
         if "G81" in clean or "G84" in clean:
-            # Converte G99 G81... R... in G81... J...
             clean_iso = clean.replace("G99 ", "").replace("R", "J")
             righe_iso.append(f"N{n_linea} {clean_iso}")
             n_linea += 2
             continue
 
-        # Posizionamenti in G00 e svincoli Z3
         if clean == "G00 Z3":
             righe_iso.append(f"N{n_linea} G00 Z3 M18")
             n_linea += 2
@@ -139,13 +137,16 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
     righe_selca.append("[MACCHINA: PARPAS_PHS812")
     
     n_linea = 2
-    for riga in righe:
-        riga_p = riga.strip()
-        if not riga_p or riga_p.startswith("(PROG:") or riga_p.startswith("(MACCHINA:"):
+    idx = 0
+    while idx < len(righe):
+        riga = righe[idx].strip()
+        idx += 1
+        
+        if not riga or riga.startswith("(PROG:") or riga.startswith("(MACCHINA:"):
             continue
 
-        if riga_p.startswith('('):
-            comm = riga_p.replace('(', '[').replace(')', '')
+        if riga.startswith('('):
+            comm = riga.replace('(', '[').replace(')', '')
             if "CONVERTITO PER MAZAK" in comm:
                 comm = comm.split("----")[0].strip()
             if "N.B.= METTERE DIAMETRO D.=0.8" in comm:
@@ -153,19 +154,35 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             righe_selca.append(comm)
             continue
 
-        if "G00 G17 G40 G49 G80 G54 G90" in riga_p:
+        if "G00 G17 G40 G49 G80 G54 G90" in riga:
             righe_selca.append("N2 G17")
             righe_selca.append("O1")
             n_linea = 4
             continue
 
-        clean = re.sub(r'^N\d+\s*', '', riga_p)
+        clean = re.sub(r'^N\d+\s*', '', riga)
 
-        # Rimuove G49 K3 nella conversione verso SELCA
-        if "G49 K" in clean:
+        if any(cmd in clean for cmd in ['G61.1', 'G64', 'G54', 'G90']):
             continue
 
-        # Inverte Cicli Foratura ISO -> SELCA (J -> R e aggiunge G99)
+        # COMPENSAZIONE RAGGIO IN SELCA: Mantiene/Inserisce G49 K3 prima di G41/G42
+        if clean.startswith("G41") or clean.startswith("G42"):
+            # Se la riga precedente nel SELCA non era già un G49, lo inserisce espressamente
+            if not (righe_selca and "G49" in righe_selca[-1]):
+                righe_selca.append(f"N{n_linea} G49 K3")
+                n_linea += 2
+            
+            clean_selca = clean.replace("F800", "F400")
+            righe_selca.append(f"N{n_linea} {clean_selca}")
+            n_linea += 2
+            continue
+
+        if "G49 K" in clean:
+            righe_selca.append(f"N{n_linea} {clean}")
+            n_linea += 2
+            continue
+
+        # Cicli Foratura ISO -> SELCA (J -> R e aggiunge G99)
         if "G81" in clean or "G84" in clean:
             clean_selca = "G99 " + clean.replace("J", "R")
             righe_selca.append(f"N{n_linea} {clean_selca}")
@@ -194,9 +211,6 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             righe_selca.append(f"N{n_linea} {s_str} M3")
             n_linea += 2
             continue
-
-        if clean.startswith("G42") or clean.startswith("G41"):
-            clean = clean.replace("F800", "F400")
 
         righe_selca.append(f"N{n_linea} {clean}")
         n_linea += 2
