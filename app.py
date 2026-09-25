@@ -130,7 +130,6 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
         righe_iso.append(f"N{n_linea} {clean}")
         n_linea += 2
 
-    # Aggiunge M9 finale se non presente prima di M30
     if righe_iso and "M9" not in righe_iso[-1]:
         righe_iso.append(f"N{n_linea} M9")
 
@@ -205,8 +204,8 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             n_linea += 2
             continue
 
-        # PRIMO POSIZIONAMENTO IN Z: Aggiunge M18 (o M8) solo qui
-        if primo_z_utensile and re.search(r'\bG00\b.*\bZ\d+', clean):
+        # PRIMO POSIZIONAMENTO IN Z (con o senza G00): Aggiunge M18 o M8
+        if primo_z_utensile and re.search(r'\bZ-?\d+(\.\d+)?\b', clean):
             codice_acqua = "M18" if utensile_attuale in [1, 4] else "M8"
             righe_selca.append(f"N{n_linea} {clean} {codice_acqua}")
             n_linea += 2
@@ -239,7 +238,6 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
         righe_selca.append(f"N{n_linea} {clean}")
         n_linea += 2
 
-    # Aggiunge M9 finale se il programma termina senza spegnimento
     if righe_selca and "M9" not in righe_selca[-1]:
         righe_selca.append(f"N{n_linea} M9")
 
