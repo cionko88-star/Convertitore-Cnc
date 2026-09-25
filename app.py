@@ -17,13 +17,10 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not riga_grezza:
             continue
             
-        # Converte universalmente tutte le parentesi quadre in tonde (per commenti e utensili)
-        if '[' in riga_grezza or ']' in riga_grezza or riga_grezza.startswith('('):
-            riga_convertita = riga_grezza.replace('[', '(').replace(']', ')')
-            # Assicura la chiusura con parentesi tonda se manca
-            if riga_convertita.startswith('(') and not riga_convertita.endswith(')'):
-                riga_convertita += ')'
-            righe_iso.append(riga_convertita)
+        # Gestione ferrea dei commenti e utensili: se inizia o contiene '[', forza '(' all'inizio e ')' alla fine
+        if riga_grezza.startswith('[') or riga_grezza.startswith('(') or '[' in riga_grezza:
+            interno = riga_grezza.lstrip('[(').rstrip(')]').strip()
+            righe_iso.append(f"({interno})")
             continue
             
         # Rimuove il vecchio numero di blocco se presente
