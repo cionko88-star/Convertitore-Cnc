@@ -141,7 +141,7 @@ HTML_TEMPLATE = """
             <div class="direction-bar">
                 <span>Modalità attuale:</span>
                 <span class="direction-badge" id="directionLabel">
-                    {% if modalita == 'selca_to_iso' %} SELCA ➔ ISO {% else %} ISO ➔ SELCA {% endif %}
+                    {% if modalita == 'selca_to_iso' %} SELCA ➔ ISO (.eia) {% else %} ISO ➔ SELCA (senza estensione) {% endif %}
                 </span>
                 <button type="submit" formaction="/scambia" class="btn btn-swap">🔄 Inverti Direzione</button>
             </div>
@@ -164,13 +164,15 @@ HTML_TEMPLATE = """
                 <div class="card">
                     <div class="card-header">
                         <span class="card-title" id="titleDestinazione">
-                            {% if modalita == 'selca_to_iso' %} ∿ Uscita ISO {% else %} ∿ Uscita SELCA {% endif %}
+                            {% if modalita == 'selca_to_iso' %} ∿ Uscita ISO (.eia) {% else %} ∿ Uscita SELCA {% endif %}
                         </span>
                     </div>
                     <textarea class="output" name="codice_convertito" readonly placeholder="I tuoi blocchi convertiti atterreranno qui.">{{ codice_convertito }}</textarea>
                     <div class="actions" style="justify-content: flex-end; gap: 10px;">
                         <button type="button" class="btn btn-secondary" onclick="copiaTesto()">Copia</button>
-                        <button type="submit" formaction="/scarica" class="btn btn-primary">Scarica .NC</button>
+                        <button type="submit" formaction="/scarica" class="btn btn-primary">
+                            {% if modalita == 'selca_to_iso' %} Scarica .EIA {% else %} Scarica file SELCA {% endif %}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -224,7 +226,6 @@ def scambia():
     
     nuova_modalita = 'selca_to_iso' if modalita == 'iso_to_selca' else 'iso_to_selca'
     
-    # Inverte anche il testo presente nei box
     return render_template_string(HTML_TEMPLATE, codice_sorgente=codice_convertito, codice_convertito=codice_sorgente, modalita=nuova_modalita)
 
 @app.route('/scarica', methods=['POST'])
@@ -234,10 +235,10 @@ def scarica():
     
     if modalita == 'selca_to_iso':
         codice_convertito = traduci_selca_in_iso(codice_sorgente)
-        nome_file = "programma_iso.nc"
+        nome_file = "PROGRAMMA_ISO.eia"
     else:
         codice_convertito = traduci_iso_in_selca(codice_sorgente)
-        nome_file = "programma_selca.nc"
+        nome_file = "PROGRAMMA_SELCA"  # Senza estensione per SELCA
         
     return Response(
         codice_convertito,
