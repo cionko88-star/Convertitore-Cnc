@@ -9,20 +9,17 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     righe_elaborate = []
     
     # 1. Parsing preliminare per estrarre gli utensili in ordine e associarli alle descrizioni
-    utensili_info = [] # Lista di tuple: (num_utensile, descrizione_testo)
+    utensili_info = [] 
     for riga in righe_greffe:
         riga_clean = riga.strip()
-        # Cerca pattern tipo T1 M6 [ Descrizione ] oppure T1 M6 ( Descrizione )
         match_t = re.search(r'T(\d+)\s+M6\b\s*[\(\[]\s*(.*?)\s*[\)\]]?', riga_clean, re.IGNORECASE)
         if match_t:
             t_num = match_t.group(1)
             t_desc = match_t.group(2).strip()
             utensili_info.append((t_num, t_desc))
 
-    # Estrae la sequenza di tutti i numeri utensile trovati nel programma
     t_sequenza = [t[0] for t in utensili_info]
     
-    idx_utensile_corrente = 0
     n_linea = 2
     modo_movimento_corrente = None
     
@@ -34,7 +31,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not riga_grezza:
             continue
             
-        # Gestione righe che sono PURAMENTE commenti (es. ( SGROSSATURA... ))
+        # Gestione righe che sono PURAMENTE commenti
         if riga_grezza.startswith('[') or riga_grezza.startswith('('):
             commento = riga_grezza
             if commento.startswith('['):
@@ -45,28 +42,25 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(commento)
             continue
             
-        # Rimuove il vecchio numero di blocco se presente (es. N4, N6...)
+        # Rimuove il vecchio numero di blocco se presente
         clean = re.sub(r'^N\d+\s*', '', riga_grezza)
         if not clean:
             continue
             
-        # Intercetta il cambio utensile es. T1 M6 [ FRESA ... ] o simili
+        # Intercetta il cambio utensile
         match_cambio = re.search(r'T(\d+)\s+M6\b', clean, re.IGNORECASE)
         if match_cambio:
             t_num = match_cambio.group(1)
             
-            # Trova la descrizione corrispondente
             descrizione = ""
             for item in utensili_info:
                 if item[0] == t_num:
                     descrizione = item[1]
                     break
             if not descrizione:
-                # Fallback se la descrizione era dentro la stessa riga ma non intercettata prima
                 m_inline = re.search(r'[\(\[]\s*(.*?)\s*[\)\]]', clean)
                 descrizione = m_inline.group(1).strip() if m_inline else ""
 
-            # Determina il prossimo utensile per il pre-caricamento (M51)
             prossimo_t = ""
             try:
                 current_idx_in_seq = t_sequenza.index(t_num)
@@ -75,18 +69,15 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             except ValueError:
                 pass
 
-            # Genera i blocchi strutturati richiesti
-            # 1. Blocco cambio utensile principale
-            righe_elaborate.append(f"N{n_linea} T{t_num} M06 M5 M9 ( T{t_num} - {descrizione} )")
+            # Ripristinato correttamente il commento utensile
+            desc_str = f" ( T{t_num} - {descrizione} )" if descrizione else f" ( T{t_num} )"
+            righe_elaborate.append(f"N{n_linea} T{t_num} M06 M5 M9{desc_str}")
             n_linea += 2
             
-            # 2. Blocco sicurezza e zero pezzo
             righe_elaborate.append(f"N{n_linea} G00 G90 G54")
             n_linea += 2
             
-            # 3. Blocco velocità e pre-caricamento successivo (se esiste)
-            # Cerchiamo eventuale S nel blocco originale o nelle righe successive immediate
-            s_val = "S4400" # Default o cerca nel testo
+            s_val = "S4400"
             m_s = re.search(r'S(\d+)', clean, re.IGNORECASE)
             if m_s:
                 s_val = f"S{m_s.group(1)}"
@@ -94,26 +85,20 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 m_s_next = re.search(r'S(\d+)', righe_greffe[i], re.IGNORECASE)
                 if m_s_next:
                     s_val = f"S{m_s_next.group(1)}"
-                    i += 1 # Salva la riga S già consumata
+                    i += 1
 
             if prossimo_t:
                 righe_elaborate.append(f"N{n_linea} {s_val} M3 T{prossimo_t} M51")
             else:
                 righe_elaborate.append(f"N{n_linea} {s_val} M3")
             n_linea += 2
-            
             continue
 
-        # Gestione riga con S e M3 isolata (se non gestita dal blocco sopra)
         if clean.startswith("S") and "M3" in clean:
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
-            # Subito dopo inseriamo G61.1 se siamo all'avvio del pezzo
-            righe_elaborate.append(f"N{n_linea} G61.1")
-            n_linea += 2
             continue
 
-        # Gestione commenti inline generici
         if '[' in clean or ']' in clean:
             clean = clean.replace('[', '(').replace(']', ')')
             if not clean.endswith(')'):
@@ -122,16 +107,12 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             n_linea += 2
             continue
             
-        # Spaziatura coordinate appiccicate
         clean = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', clean)
         clean = re.sub(r'\s+', ' ', clean).strip()
         
-        # Gestione Z pulita se richiesta (es. Z3)
-        if clean == "G00 Z3 M18" or clean == "G0 Z3 M18":
+        # Pulizia comandi Z rapidi isolati
+        if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
             clean = "Z3"
-        elif clean.startswith("G00 Z") or clean.startswith("G0 Z"):
-            # Se vuoi accorciare i posizionamenti Z isolati in sicurezza
-            pass
 
         # Gestione cicli fissi
         if clean.startswith("G81") or clean.startswith("G84"):
@@ -141,24 +122,37 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             resto = re.sub(r'J\d+', 'R3', resto)
             clean = f"G99 {cmd_g} {resto}"
 
-        # Gestione movimenti
+        # Gestione movimenti e inserimento G61.1 prima di G01
+        is_z_rapido = False
         if clean.startswith("G00") or clean.startswith("G0 "):
             modo_movimento_corrente = "G00"
+            if "Z" in clean:
+                is_z_rapido = True
         elif clean.startswith("G01") or clean.startswith("G1 "):
-            if modo_movimento_corrente == "G01":
-                clean = re.sub(r'^G0?1\s*', '', clean)
-            else:
-                modo_movimento_corrente = "G01"
+            modo_movimento_corrente = "G01"
+            righe_elaborate.append(f"N{n_linea} G61.1")
+            n_linea += 2
+            clean = re.sub(r'^G0?1\s*', '', clean)
         else:
             if any(k in clean for k in ['X', 'Y', 'Z']) and not any(g in clean for g in ['G0', 'G1', 'G2', 'G3', 'G40', 'G41', 'G42', 'G81', 'G84']):
                 is_lavoro = "F" in clean or modo_movimento_corrente == "G01"
                 atteso_g = "G01" if is_lavoro else "G00"
-                if atteso_g != modo_movimento_corrente:
+                if atteso_g == "G01" and modo_movimento_corrente != "G01":
+                    righe_elaborate.append(f"N{n_linea} G61.1")
+                    n_linea += 2
+                modo_movimento_corrente = atteso_g
+                if atteso_g != "G00":
                     clean = f"{atteso_g} {clean}"
-                    modo_movimento_corrente = atteso_g
+                elif "Z" in clean and atteso_g == "G00":
+                    is_z_rapido = True
 
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
+        
+        # Aggiunta automatica di G64 subito dopo un movimento rapido in Z
+        if is_z_rapido or (modo_movimento_corrente == "G00" and "Z" in clean):
+            righe_elaborate.append(f"N{n_linea} G64")
+            n_linea += 2
         
     return "\n".join(righe_elaborate)
 
