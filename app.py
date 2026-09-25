@@ -25,7 +25,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
     n_linea = 2
     g61_attivo = False
-    utensile_attuale = None
+    utensile_attuale = 1  # Utensile di default se non specificato prima
 
     idx = 0
     while idx < len(righe):
@@ -96,10 +96,10 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
 
-        # COMPENSAZIONE RAGGIO IN ISO: Aggiunge G49 K3 prima di G41/G42 se non già presente
+        # COMPENSAZIONE RAGGIO IN ISO: Genera G49 K legato al numero dell'utensile attivo (es: G49 K2)
         if clean.startswith("G42") or clean.startswith("G41"):
             if not (righe_iso and "G49" in righe_iso[-1]):
-                righe_iso.append(f"N{n_linea} G49 K3")
+                righe_iso.append(f"N{n_linea} G49 K{utensile_attuale}")
                 n_linea += 2
             clean_mod = clean.replace("F400", "F800")
             righe_iso.append(f"N{n_linea} {clean_mod}")
@@ -137,6 +137,8 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
     righe_selca.append("[MACCHINA: PARPAS_PHS812")
     
     n_linea = 2
+    utensile_attuale = 1
+
     idx = 0
     while idx < len(righe):
         riga = righe[idx].strip()
@@ -162,14 +164,24 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
 
         clean = re.sub(r'^N\d+\s*', '', riga)
 
+        if "M06" in clean:
+            m_t = re.search(r'T(\d+)', clean)
+            if m_t:
+                utensile_attuale = int(m_t.group(1))
+                comm = ""
+                if '(' in clean:
+                    comm = " [" + clean[clean.index('(')+1:].replace(')', '')
+                righe_selca.append(f"N{n_linea} T{utensile_attuale} M6{comm}")
+                n_linea += 2
+            continue
+
         if any(cmd in clean for cmd in ['G61.1', 'G64', 'G54', 'G90']):
             continue
 
-        # COMPENSAZIONE RAGGIO IN SELCA: Mantiene/Inserisce G49 K3 prima di G41/G42
+        # COMPENSAZIONE RAGGIO IN SELCA: Genera G49 K legato all'utensile attivo (es: G49 K1, G49 K2)
         if clean.startswith("G41") or clean.startswith("G42"):
-            # Se la riga precedente nel SELCA non era già un G49, lo inserisce espressamente
             if not (righe_selca and "G49" in righe_selca[-1]):
-                righe_selca.append(f"N{n_linea} G49 K3")
+                righe_selca.append(f"N{n_linea} G49 K{utensile_attuale}")
                 n_linea += 2
             
             clean_selca = clean.replace("F800", "F400")
@@ -178,6 +190,8 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             continue
 
         if "G49 K" in clean:
+            # Aggiorna il K dinamicamente al valore dell'utensile corrente se presente
+            clean = f"G49 K{utensile_attuale}"
             righe_selca.append(f"N{n_linea} {clean}")
             n_linea += 2
             continue
@@ -192,17 +206,6 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
         if clean == "G00 Z3 M18":
             righe_selca.append(f"N{n_linea} G00 Z3")
             n_linea += 2
-            continue
-
-        if "M06" in clean:
-            m_t = re.search(r'T(\d+)', clean)
-            if m_t:
-                num_t = m_t.group(1)
-                comm = ""
-                if '(' in clean:
-                    comm = " [" + clean[clean.index('(')+1:].replace(')', '')
-                righe_selca.append(f"N{n_linea} T{num_t} M6{comm}")
-                n_linea += 2
             continue
 
         if "S" in clean and "M3" in clean:
