@@ -25,6 +25,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
     n_linea = 2
     utensile_attuale = 1
     curr_x, curr_y = 0.0, 0.0
+    ultimo_z_visto = False
 
     idx = 0
     while idx < len(righe):
@@ -36,10 +37,12 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
 
         if riga_p.startswith("[CLIENTE:") or riga_p.startswith("[DISEGNO:") or riga_p.startswith("[DESCRIZIONE:") or riga_p.startswith("[MATERIALE:"):
             righe_iso.append(riga_p.replace('[', '(') + ')')
+            ultimo_z_visto = False
             continue
         elif riga_p.startswith("[Data:"):
             base_data = riga_p.replace('[', '(')
             righe_iso.append(f"{base_data} ---- {data_oggi} CONVERTITO PER MAZAK)")
+            ultimo_z_visto = False
             continue
         elif riga_p.startswith("[PROG:") or riga_p.startswith("[MACCHINA:"):
             continue
@@ -49,6 +52,15 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             if not comm.endswith(')'): comm += ')'
             if "N.B.= METTERE RAGGIO R.=0.3" in comm:
                 comm = "( N.B.= METTERE DIAMETRO D.=0.8 )"
+            
+            # Se ci sono commenti prima del cambio utensile e avevamo appena fatto un Z, metti M5/M9 prima del commento
+            if ultimo_z_visto and ("T" in comm or idx >= len(righe) - 2):
+                righe_iso.append(f"N{n_linea} M5")
+                n_linea += 2
+                righe_iso.append(f"N{n_linea} M9")
+                n_linea += 2
+                ultimo_z_visto = False
+
             righe_iso.append(comm)
             continue
 
@@ -56,12 +68,21 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             if "N2 G00 G17 G40 G49 G80 G54 G90" not in righe_iso:
                 righe_iso.append("N2 G00 G17 G40 G49 G80 G54 G90")
                 n_linea = 4
+            ultimo_z_visto = False
             continue
 
         clean = re.sub(r'^N\d+\s*', '', riga_p)
 
         # Cambio Utensile
         if re.search(r'\bT\d+\s+M6\b', clean) or (re.search(r'\bT\d+\b', clean) and 'M6' in clean):
+            # Se per caso non si era ancora chiuso con M5/M9
+            if ultimo_z_visto:
+                righe_iso.append(f"N{n_linea} M5")
+                n_linea += 2
+                righe_iso.append(f"N{n_linea} M9")
+                n_linea += 2
+                ultimo_z_visto = False
+
             m_t = re.search(r'T(\d+)', clean)
             if m_t:
                 utensile_attuale = int(m_t.group(1))
@@ -70,7 +91,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                     comm = " " + clean[clean.index('['):].replace('[', '(')
                     if not comm.endswith(')'): comm += ')'
                 
-                righe_iso.append(f"N{n_linea} T{utensile_attuale} M06 M5 M9{comm}")
+                righe_iso.append(f"N{n_linea} T{utensile_attuale} M06{comm}")
                 n_linea += 2
                 righe_iso.append(f"N{n_linea} G00 G90 G54")
                 n_linea += 2
@@ -91,6 +112,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 righe_iso.append(f"N{n_linea} S{s_val} M3")
             
             n_linea += 2
+            ultimo_z_visto = False
             continue
 
         # Se SELCA ha G41/G42 isolato
@@ -110,6 +132,7 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 
                 n_linea += 2
                 idx += 1
+                ultimo_z_visto = False
                 continue
 
         # Se SELCA ha G40 isolato
@@ -125,9 +148,10 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
                 
                 n_linea += 2
                 idx += 1
+                ultimo_z_visto = False
                 continue
 
-        # CONVERSIONE ARCHI G02 / G03 (SELCA -> ISO: Assoluto -> Incrementale)
+        # CONVERSIONE ARCHI G02 / G03
         if clean.startswith("G02") or clean.startswith("G03") or clean.startswith("G2") or clean.startswith("G3"):
             parts = clean.split()
             cmd_g = parts[0]
@@ -137,35 +161,40 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             new_tokens = []
             
             for t in tokens:
-                if t.startswith('I'):
-                    i_abs = float(t[1:])
-                elif t.startswith('J'):
-                    j_abs = float(t[1:])
-                else:
-                    new_tokens.append(t)
+                if t.startswith('I'): i_abs = float(t[1:])
+                elif t.startswith('J'): j_abs = float(t[1:])
+                else: new_tokens.append(t)
             
             if i_abs is not None:
-                i_inc = round(i_abs - curr_x, 3)
-                new_tokens.append(f"I{i_inc}")
+                new_tokens.append(f"I{round(i_abs - curr_x, 3)}")
             if j_abs is not None:
-                j_inc = round(j_abs - curr_y, 3)
-                new_tokens.append(f"J{j_inc}")
+                new_tokens.append(f"J{round(j_abs - curr_y, 3)}")
                 
             clean = f"{cmd_g} " + " ".join(new_tokens)
+            ultimo_z_visto = False
 
-        # Tracciamento coordinate Correnti
+        # Tracciamento coordinate Correnti e rilevamento Z
         m_x = re.search(r'X(-?\d+(\.\d+)?)', clean)
         m_y = re.search(r'Y(-?\d+(\.\d+)?)', clean)
+        m_z = re.search(r'Z(-?\d+(\.\d+)?)', clean)
+        
         if m_x: curr_x = float(m_x.group(1))
         if m_y: curr_y = float(m_y.group(1))
+        
+        if m_z:
+            ultimo_z_visto = True
+        else:
+            if any(k in clean for k in ['X', 'Y', 'G0', 'G1', 'G2', 'G3']):
+                ultimo_z_visto = False
 
-        # CICLI DI FORATURA/MASCHIATURA (SELCA -> ISO)
+        # CICLI DI FORATURA/MASCHIATURA
         if any(ciclo in clean for ciclo in ["G81", "G84", "G85"]):
             clean_iso = re.sub(r'\bJ(\d+(\.\d+)?)', r'R\1', clean)
             if not clean_iso.startswith("G99"):
                 clean_iso = "G99 " + clean_iso
             righe_iso.append(f"N{n_linea} {clean_iso}")
             n_linea += 2
+            ultimo_z_visto = True
             continue
 
         if "M18" in clean or "M8" in clean:
@@ -178,10 +207,21 @@ def traduci_selca_in_iso(codice_selca: str, nome_prog: str = "200011974-A") -> s
             n_linea += 2
             righe_iso.append(f"N{n_linea} M9")
             n_linea += 2
+            ultimo_z_visto = False
             continue
 
         righe_iso.append(f"N{n_linea} {clean}")
         n_linea += 2
+
+        # Se abbiamo appena eseguito l'ultimo posizionamento in Z e la riga successiva è un cambio utensile o fine file
+        if ultimo_z_visto and idx < len(righe):
+            prox_riga = righe[idx].strip()
+            if "T" in prox_riga or "M6" in prox_riga or prox_riga.startswith('['):
+                righe_iso.append(f"N{n_linea} M5")
+                n_linea += 2
+                righe_iso.append(f"N{n_linea} M9")
+                n_linea += 2
+                ultimo_z_visto = False
 
     if righe_iso:
         if "M5" not in righe_iso[-1] and "M5" not in righe_iso[-2]:
@@ -202,11 +242,10 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
     
     n_linea = 2
     utensile_attuale = 1
-    primo_utensile = True
-    m5_m9_inseriti_primo_utensile = False
     primo_z_utensile = True
     modalita_moto = "G00"
     curr_x, curr_y = 0.0, 0.0
+    ultimo_z_visto = False
 
     idx = 0
     while idx < len(righe):
@@ -216,42 +255,21 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
         if not riga or riga.startswith("(PROG:") or riga.startswith("(MACCHINA:"):
             continue
 
-        clean_temp = re.sub(r'^N\d+\s*', '', riga)
-        is_tool_change = "M06" in clean_temp or "M6" in clean_temp
-
-        # Se incontriamo un commento o cambio utensile DOPO il primo utensile
-        if primo_utensile and not m5_m9_inseriti_primo_utensile:
-            # Verifichiamo se ci stiamo avvicinando al secondo cambio utensile
-            is_next_tool_change = is_tool_change
-            if riga.startswith('('):
-                j = idx
-                while j < len(righe):
-                    r_next = righe[j].strip()
-                    c_next = re.sub(r'^N\d+\s*', '', r_next)
-                    if r_next.startswith('(') or not r_next:
-                        j += 1
-                        continue
-                    if "M06" in c_next or "M6" in c_next:
-                        is_next_tool_change = True
-                    break
-
-            if is_next_tool_change:
-                # Arretriamo prima dei commenti accumulati subito prima del nuovo cambio utensile
-                i_insert = len(righe_selca)
-                while i_insert > 0 and (righe_selca[i_insert-1].startswith('[') or not righe_selca[i_insert-1]):
-                    i_insert -= 1
-                
-                righe_selca.insert(i_insert, f"N{n_linea} M9")
-                righe_selca.insert(i_insert, f"N{n_linea} M5")
-                m5_m9_inseriti_primo_utensile = True
-                primo_utensile = False
-
         if riga.startswith('('):
             comm = riga.replace('(', '[').replace(')', '')
             if "CONVERTITO PER MAZAK" in comm:
                 comm = comm.split("----")[0].strip()
             if "N.B.= METTERE DIAMETRO D.=0.8" in comm:
                 comm = "[ N.B.= METTERE RAGGIO R.=0.3"
+            
+            # Se c'è un commento e avevamo appena fatto un Z prima del cambio utensile, inseriamo M5/M9 prima
+            if ultimo_z_visto and ("T" in comm or idx >= len(righe) - 2):
+                righe_selca.append(f"N{n_linea} M5")
+                n_linea += 2
+                righe_selca.append(f"N{n_linea} M9")
+                n_linea += 2
+                ultimo_z_visto = False
+
             righe_selca.append(comm)
             continue
 
@@ -260,12 +278,20 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             righe_selca.append("O1")
             n_linea = 4
             modalita_moto = "G00"
+            ultimo_z_visto = False
             continue
 
         clean = re.sub(r'^N\d+\s*', '', riga)
 
         # Cambio utensile M6
         if "M06" in clean or "M6" in clean:
+            if ultimo_z_visto:
+                righe_selca.append(f"N{n_linea} M5")
+                n_linea += 2
+                righe_selca.append(f"N{n_linea} M9")
+                n_linea += 2
+                ultimo_z_visto = False
+
             m_t = re.search(r'T(\d+)', clean)
             if m_t:
                 utensile_attuale = int(m_t.group(1))
@@ -282,14 +308,10 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             continue
 
         # Aggiornamento stato modale di movimento
-        if re.search(r'\bG0*0\b', clean):
-            modalita_moto = "G00"
-        elif re.search(r'\bG0*1\b', clean):
-            modalita_moto = "G01"
-        elif re.search(r'\bG0*2\b', clean):
-            modalita_moto = "G02"
-        elif re.search(r'\bG0*3\b', clean):
-            modalita_moto = "G03"
+        if re.search(r'\bG0*0\b', clean): modalita_moto = "G00"
+        elif re.search(r'\bG0*1\b', clean): modalita_moto = "G01"
+        elif re.search(r'\bG0*2\b', clean): modalita_moto = "G02"
+        elif re.search(r'\bG0*3\b', clean): modalita_moto = "G03"
 
         # COMPENSAZIONE RAGGIO G41 / G42
         if clean.startswith("G41") or clean.startswith("G42"):
@@ -313,73 +335,74 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
                 if m_y: curr_y = float(m_y.group(1))
                 
                 n_linea += 2
+            ultimo_z_visto = False
             continue
 
         # ANNULLAMENTO COMPENSAZIONE G40
         if "G40" in clean:
             rest_xy = clean.replace("G40", "").strip()
-            
             righe_selca.append(f"N{n_linea} G40")
             n_linea += 2
             
             if rest_xy:
                 righe_selca.append(f"N{n_linea} {rest_xy}")
-                
                 m_x = re.search(r'X(-?\d+(\.\d+)?)', rest_xy)
                 m_y = re.search(r'Y(-?\d+(\.\d+)?)', rest_xy)
                 if m_x: curr_x = float(m_x.group(1))
                 if m_y: curr_y = float(m_y.group(1))
-                
                 n_linea += 2
+            ultimo_z_visto = False
             continue
 
         if "G49 K" in clean:
             clean = f"G49 K{utensile_attuale}"
             righe_selca.append(f"N{n_linea} {clean}")
             n_linea += 2
+            ultimo_z_visto = False
             continue
 
-        # CONVERSIONE ARCHI G02 / G03 (ISO -> SELCA: Incrementale -> Assoluto)
+        # CONVERSIONE ARCHI G02 / G03
         if clean.startswith("G02") or clean.startswith("G03") or clean.startswith("G2") or clean.startswith("G3"):
             parts = clean.split()
             cmd_g = parts[0]
             tokens = parts[1:]
-            
             i_inc, j_inc = None, None
             new_tokens = []
-            
             next_x, next_y = curr_x, curr_y
             
             for t in tokens:
-                if t.startswith('I'):
-                    i_inc = float(t[1:])
-                elif t.startswith('J'):
-                    j_inc = float(t[1:])
+                if t.startswith('I'): i_inc = float(t[1:])
+                elif t.startswith('J'): j_inc = float(t[1:])
                 else:
                     new_tokens.append(t)
                     if t.startswith('X'): next_x = float(t[1:])
                     elif t.startswith('Y'): next_y = float(t[1:])
             
-            if i_inc is not None:
-                i_abs = round(curr_x + i_inc, 3)
-                new_tokens.append(f"I{i_abs:g}")
-            if j_inc is not None:
-                j_abs = round(curr_y + j_inc, 3)
-                new_tokens.append(f"J{j_abs:g}")
+            if i_inc is not None: new_tokens.append(f"I{round(curr_x + i_inc, 3):g}")
+            if j_inc is not None: new_tokens.append(f"J{round(curr_y + j_inc, 3):g}")
                 
             clean = f"{cmd_g} " + " ".join(new_tokens)
             curr_x, curr_y = next_x, next_y
+            ultimo_z_visto = False
 
-        # Tracciamento coordinate Correnti
+        # Tracciamento coordinate e rilevamento Z
         m_x = re.search(r'X(-?\d+(\.\d+)?)', clean)
         m_y = re.search(r'Y(-?\d+(\.\d+)?)', clean)
-        if m_x and not (clean.startswith("G02") or clean.startswith("G03") or clean.startswith("G2") or clean.startswith("G3")):
+        m_z = re.search(r'Z(-?\d+(\.\d+)?)', clean)
+        
+        if m_x and not clean.startswith("G02") and not clean.startswith("G03") and not clean.startswith("G2") and not clean.startswith("G3"):
             curr_x = float(m_x.group(1))
-        if m_y and not (clean.startswith("G02") or clean.startswith("G03") or clean.startswith("G2") or clean.startswith("G3")):
+        if m_y and not clean.startswith("G02") and not clean.startswith("G03") and not clean.startswith("G2") and not clean.startswith("G3"):
             curr_y = float(m_y.group(1))
+            
+        if m_z:
+            ultimo_z_visto = True
+        else:
+            if any(k in clean for k in ['X', 'Y', 'G0', 'G1', 'G2', 'G3']):
+                ultimo_z_visto = False
 
         # PRIMO POSIZIONAMENTO IN Z
-        if primo_z_utensile and re.search(r'\bZ-?\d+(\.\d+)?\b', clean):
+        if primo_z_utensile and m_z:
             codice_acqua = "M18" if utensile_attuale in [1, 4] else "M8"
             if not clean.startswith("G00") and not clean.startswith("G01"):
                 clean = "G00 " + clean
@@ -388,11 +411,10 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             primo_z_utensile = False
             continue
 
-        # CICLI DI FORATURA E MASCHIATURA (ISO -> SELCA)
+        # CICLI DI FORATURA E MASCHIATURA
         if any(ciclo in clean for ciclo in ["G81", "G84", "G85"]):
             m_x_iso = re.search(r'X(-?\d+(\.\d+)?)', clean)
             m_y_iso = re.search(r'Y(-?\d+(\.\d+)?)', clean)
-            
             if m_x_iso: curr_x = float(m_x_iso.group(1))
             if m_y_iso: curr_y = float(m_y_iso.group(1))
             
@@ -403,12 +425,11 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             
             righe_selca.append(f"N{n_linea} {clean_selca}")
             n_linea += 2
-            
             righe_selca.append(f"N{n_linea} X{curr_x:g} Y{curr_y:g}")
             n_linea += 2
+            ultimo_z_visto = True
             continue
 
-        # Gestione G01 modale per spostamenti
         if re.match(r'^X-?\d+.*Y-?\d+', clean) and not any(clean.startswith(cmd) for cmd in ["G00", "G0", "G01", "G1", "G02", "G2", "G03", "G3"]):
             if modalita_moto in ["G01", "G1"]:
                 clean = "G01 " + clean
@@ -418,18 +439,29 @@ def traduci_iso_in_selca(codice_iso: str, nome_prog: str = "200011974-A") -> str
             s_str = m_s.group(0) if m_s else "S4400"
             righe_selca.append(f"N{n_linea} {s_str} M3")
             n_linea += 2
+            ultimo_z_visto = False
             continue
 
-        # Gestione esplicita di M5
         if clean in ["M5", "M05"]:
             righe_selca.append(f"N{n_linea} M5")
             n_linea += 2
             righe_selca.append(f"N{n_linea} M9")
             n_linea += 2
+            ultimo_z_visto = False
             continue
 
         righe_selca.append(f"N{n_linea} {clean}")
         n_linea += 2
+
+        # Se la riga corrente era un Z e la successiva è un cambio utensile, inseriamo M5/M9 subito dopo
+        if ultimo_z_visto and idx < len(righe):
+            prox_riga = righe[idx].strip()
+            if "T" in prox_riga or "M6" in prox_riga or "M06" in prox_riga:
+                righe_selca.append(f"N{n_linea} M5")
+                n_linea += 2
+                righe_selca.append(f"N{n_linea} M9")
+                n_linea += 2
+                ultimo_z_visto = False
 
     # Rinumerazione finale ordinata di tutti i blocchi N
     righe_finali = []
