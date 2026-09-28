@@ -99,12 +99,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         clean = re.sub(r'^N\d+\s*', '', riga_grezza)
         if not clean:
             continue
-            
-        # Gestione esplicita e prioritaria per G61.1 ovunque si trovi
-        if re.search(r'\bG61\.1\b', clean, re.IGNORECASE):
-            righe_elaborate.append(f"N{n_linea} {clean.upper()}")
-            n_linea += 2
-            continue
 
         if re.search(r'\bG17\b', clean, re.IGNORECASE) or re.search(r'\bO1\b', clean, re.IGNORECASE) or re.search(r'\b1\b', clean):
             if not header_iniziale_inserito:
@@ -174,8 +168,12 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             n_linea += 2
             continue
             
+        # Controllo specifico per G61.1 (o se la riga contiene G61.1)
+        has_g61_1 = bool(re.search(r'\bG61\.1\b', clean, re.IGNORECASE))
+
         # Gestione della 'R' finale tipica di Selca (indica movimento rapido G00)
-        if re.search(r'\bR\s*$', clean):
+        has_r_rapido = bool(re.search(r'\bR\s*$', clean))
+        if has_r_rapido:
             clean = re.sub(r'\bR\s*$', '', clean).strip()
             if not clean.startswith("G00") and not clean.startswith("G0"):
                 clean = f"G00 {clean}"
@@ -273,6 +271,10 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         else:
             if modo_movimento_corrente == "G01" and any(k in clean for k in ['X', 'Y', 'Z']):
                 pass
+
+        # Se la riga originale conteneva G61.1, assicuriamoci che sia presente nella stringa pulita
+        if has_g61_1 and not re.search(r'\bG61\.1\b', clean, re.IGNORECASE):
+            clean = f"G61.1 {clean}".strip()
 
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
