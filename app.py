@@ -200,47 +200,44 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if clean.startswith("G80"):
             in_ciclo_foratura = False
 
-        if "G41" in clean or "G42" in clean:
-            if not any(k in clean for k in ['X', 'Y', 'Z']) and i < len(righe_greffe):
-                prossima_riga = righe_greffe[i].strip()
-                prossima_riga = re.sub(r'^N\d+\s*', '', prossima_riga)
-                if any(k in prossima_riga for k in ['X', 'Y']):
-                    clean += " " + prossima_riga
-                    i += 1
-            modo_movimento_corrente = "G01"
-            righe_elaborate.append(f"N{n_linea} {clean}")
-            n_linea += 2
-            continue
-
-        if "G40" in clean:
+        # Gestione G41 / G42 (forzano la modalità G01 in quanto tagli)
+        if "G41" in clean or "G42" in clean or "G40" in clean:
             if not any(k in clean for k in ['X', 'Y', 'Z']) and i < len(righe_greffe):
                 prossima_riga = righe_greffe[i].strip()
                 prossima_riga = re.sub(r'^N\d+\s*', '', prossima_riga)
                 if any(k in prossima_riga for k in ['X', 'Y', 'Z']):
                     clean += " " + prossima_riga
                     i += 1
+            modo_movimento_corrente = "G01"
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             continue
 
-        # Gestione modale G00 / G01 / Archi
+        # Gestione modale G00 / G01 / Archi rigorosa
         is_g01_explicit = clean.startswith("G01") or clean.startswith("G1 ")
         is_g_speciale = any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"])
+        is_g00_explicit = clean.startswith("G00") or clean.startswith("G0 ")
         
         if is_g_speciale:
             modo_movimento_corrente = "G01"
         elif is_g01_explicit:
-            clean = re.sub(r'^G0?1\s*', '', clean)
+            clean = re.sub(r'^G0?1\s*', '', clean).strip()
             if modo_movimento_corrente != "G01":
-                clean = f"G01 {clean}"
+                clean = f"G01 {clean}".strip()
                 modo_movimento_corrente = "G01"
+        elif is_g00_explicit:
+            clean = re.sub(r'^G0?0?\s*', '', clean).strip()
+            if modo_movimento_corrente != "G00":
+                clean = f"G00 {clean}".strip()
+                modo_movimento_corrente = "G00"
         else:
             if any(k in clean for k in ['X', 'Y', 'Z']) and not in_ciclo_foratura:
                 clean = re.sub(r'^G0?0?\s*', '', clean)
                 clean = re.sub(r'^G0?1\s*', '', clean)
-                if modo_movimento_corrente != "G00":
+                clean = clean.strip()
+                # Se siamo in G01 (es. dopo G41/G42 o precedente G01), non mettiamo G00!
+                if modo_movimento_corrente == "G00":
                     clean = f"G00 {clean}".strip()
-                    modo_movimento_corrente = "G00"
 
         # Conversione di I e J da assoluto a incrementale per archi
         if any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"]):
