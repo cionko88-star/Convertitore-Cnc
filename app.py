@@ -8,18 +8,28 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     righe_greffe = testo_selca.strip().split('\n')
     righe_elaborate = []
     
-    # 1. Parsing preliminare avanzato per estrarre gli utensili e le descrizioni complete
+    # 1. Parsing preliminare per truvà tutte e descrizzioni di l'utensili in tuttu u schedariu
     utensili_info = {} 
-    for riga in righe_greffe:
+    
+    # Prima passata per circà e linee cù T... M6 o ancu e linee di cummentariu vicine
+    for idx, riga in enumerate(righe_greffe):
         riga_clean = riga.strip()
-        match_t = re.search(r'T(\d+)\s+M6\b', riga_clean, re.IGNORECASE)
+        match_t = re.search(r'\bT(\d+)\s+M6\b', riga_clean, re.IGNORECASE)
         if match_t:
             t_num = match_t.group(1)
+            descrizione = ""
+            # Cerca una descrizzione trà parentesi nantu à a stessa riga
             match_desc = re.search(r'[\(\[]\s*(.*?)\s*[\)\]]', riga_clean)
             if match_desc:
-                utensili_info[t_num] = match_desc.group(1).strip()
+                descrizione = match_desc.group(1).strip()
             else:
-                utensili_info[t_num] = ""
+                # S'ellu ùn ci hè micca nantu à a stessa riga, cerca à a linea precedente (spessu u casu in SELCA)
+                if idx > 0:
+                    prev_riga = righe_greffe[idx - 1].strip()
+                    match_desc_prev = re.search(r'[\(\[]\s*(.*?)\s*[\)\]]', prev_riga)
+                    if match_desc_prev:
+                        descrizione = match_desc_prev.group(1).strip()
+            utensili_info[t_num] = descrizione
 
     t_sequenza = list(utensili_info.keys())
     
@@ -35,7 +45,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not riga_grezza:
             continue
             
-        # Gestione righe che sono PURAMENTE commenti
+        # Gestione di e linie chì sò puramente cummenti
         if riga_grezza.startswith('[') or riga_grezza.startswith('('):
             commento = riga_grezza
             if commento.startswith('['):
@@ -46,26 +56,25 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(commento)
             continue
             
-        # Rimuove il vecchio numero di blocco se presente
+        # Si cava u vechju numaru di bloccu s'ellu ci hè
         clean = re.sub(r'^N\d+\s*', '', riga_grezza)
         if not clean:
             continue
             
-        # Se incontriamo G17 o O1 all'inizio, gestiamo l'intestazione standard globale
+        # Gestione G17 / O1 iniziale
         if re.search(r'\bG17\b', clean, re.IGNORECASE) or re.search(r'\bO1\b', clean, re.IGNORECASE) or re.search(r'\b1\b', clean):
             if not header_iniziale_inserito:
-                # Controlliamo se la riga successiva contiene l'altra parte (es. O1 dopo G17)
                 righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
                 n_linea += 2
                 header_iniziale_inserito = True
             continue
 
-        # Salta i comandi G49 isolati
+        # Salta i cumandi G49 isolati
         if re.search(r'\bG49\b', clean, re.IGNORECASE):
             continue
             
-        # Intercetta il cambio utensile
-        match_cambio = re.search(r'T(\d+)\s+M6\b', clean, re.IGNORECASE)
+        # Intercetta u cambiamentu d'utensile
+        match_cambio = re.search(r'\bT(\d+)\s+M6\b', clean, re.IGNORECASE)
         if match_cambio:
             t_num = match_cambio.group(1)
             descrizione = utensili_info.get(t_num, "")
@@ -78,7 +87,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             except ValueError:
                 pass
 
-            # Stampa corretta del commento utensile completo
+            # Stampa curretta di u cummentariu di l'utensile
             if descrizione:
                 desc_str = f" ( T{t_num} - {descrizione} )"
             else:
@@ -87,11 +96,9 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} T{t_num} M06 M5 M9{desc_str}")
             n_linea += 2
             
-            # Assicura che l'header iniziale sia presente prima del primo cambio utensile se non ancora fatto
-            if not header_iniziale_inserito:
-                righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
-                n_linea += 2
-                header_iniziale_inserito = True
+            # INSERIMENTU OBBLIGATORIU: Dopu à T... M6 ci vole u richiamu origine G00 G90 G54
+            righe_elaborate.append(f"N{n_linea} G00 G90 G54")
+            n_linea += 2
             
             s_val = "S4400"
             m_s = re.search(r'S(\d+)', clean, re.IGNORECASE)
@@ -126,11 +133,11 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         clean = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', clean)
         clean = re.sub(r'\s+', ' ', clean).strip()
         
-        # Pulizia comandi Z rapidi isolati
+        # Pulizia di i cumandi Z rapidi isolati
         if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
             clean = "Z3"
 
-        # Gestione cicli fissi
+        # Gestione di i cicli fissi
         if clean.startswith("G81") or clean.startswith("G84"):
             parts = clean.split()
             cmd_g = parts[0]
@@ -138,12 +145,12 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             resto = re.sub(r'J\d+', 'R3', resto)
             clean = f"G99 {cmd_g} {resto}"
 
-        # Verifica se siamo in presenza di un movimento in Z rapido
+        # Verificazione di u muvimentu in Z rapidu
         is_z_rapido = False
         if ("Z" in clean and not "Z-" in clean and not any(g in clean for g in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3'])) or clean in ["Z3", "Z100"]:
             is_z_rapido = True
 
-        # Se è un movimento Z rapido, inserisce G64 PRIMA e forza G00 nel movimento stesso
+        # S'ellu hè un muvimentu Z rapidu, si mette G64 PRIMA è si forza G00
         if is_z_rapido:
             righe_elaborate.append(f"N{n_linea} G64")
             n_linea += 2
