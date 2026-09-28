@@ -192,7 +192,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
             clean = "Z3"
 
-        # Intercettazione preventivo del primo movimento X/Y prima di un ciclo di foratura
+        # 1. Intercettazione preventiva del movimento X/Y PRIMA del ciclo
         ha_xy = bool(re.search(r'[XY]', clean))
         is_pre_ciclo = False
         if ha_xy and not in_ciclo_foratura:
@@ -220,6 +220,10 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
+            
+            # MEMORIZZIAMO LE COORDINATE APPENA EMESSE PER EVITARE IL DOPPIONE SUBITO DOPO IL G81
+            ultimo_x_emesso = x_corrente
+            ultimo_y_emesso = y_corrente
             continue
 
         if any(clean.startswith(g) for g in ["G81", "G83", "G84", "G85"]):
@@ -231,6 +235,23 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             clean = f"G99 {cmd_g} {resto}"
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
+            
+            # 2. CONTROLLO E SCARTO: Se la riga SUBITO DOPO il G81 ripete esattamente le stesse coordinate X/Y iniziali, la scartiamo!
+            if i < len(righe_greffe):
+                prox_riga_chk = righe_greffe[i].strip()
+                prox_clean_chk = re.sub(r'^N\d+\s*', '', prox_riga_chk)
+                prox_clean_chk = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', prox_clean_chk)
+                prox_clean_chk = re.sub(r'\s+', ' ', prox_clean_chk).strip()
+                
+                m_x_next = re.search(r'\bX(-?\d+\.?\d*)', prox_clean_chk)
+                m_y_next = re.search(r'\bY(-?\d+\.?\d*)', prox_clean_chk)
+                
+                if m_x_next and m_y_next:
+                    x_n = float(m_x_next.group(1))
+                    y_n = float(m_y_next.group(1))
+                    if 'ultimo_x_emesso' in locals() and 'ultimo_y_emesso' in locals():
+                        if x_n == ultimo_x_emesso and y_n == ultimo_y_emesso:
+                            i += 1  # SALTIAMO LA RIGA DOPPIONE DELLE COORDINATE
             continue
 
         if clean.startswith("G80"):
