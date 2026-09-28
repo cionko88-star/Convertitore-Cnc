@@ -100,7 +100,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not clean:
             continue
 
-        # Se incontriamo M30, interrompiamo subito la conversione per evitare righe duplicate o spurie alla fine
         if "M30" in clean.upper():
             righe_elaborate.append(f"N{n_linea} M30")
             break
@@ -277,6 +276,38 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
+
+    # Controllo post-elaborazione: se prima di M30 ci sono righe di cambio utensile non seguite da lavorazioni, le rimuoviamo
+    # Cerchiamo l'indice di M30
+    idx_m30 = -1
+    for idx, riga in enumerate(righe_elaborate):
+        if "M30" in riga:
+            idx_m30 = idx
+            break
+            
+    if idx_m30 > 0:
+        # Controlliamo se nelle righe subito prima di M30 c'è un T... M06 isolato
+        # Scorriamo all'indietro da prima di M30
+        j = idx_m30 - 1
+        ha_lavorazioni_dopo_ultimo_t = False
+        while j >= 0:
+            if "M06" in righe_elaborate[j]:
+                # Trovato un cambio utensile prima di M30. Verificamone la necessità:
+                # Se tra questo M06 e M30 NON ci sono movimenti di lavoro (G01, G02, G03, X, Y, ecc.), eliminiamo tutto il blocco!
+                # Verifichiamo se c'è almeno una riga con X, Y, Z o G01/G02/G03 tra j e idx_m30
+                ha_movimenti = False
+                for k in range(j + 1, idx_m30):
+                    r_test = righe_elaborate[k]
+                    if any(kwd in r_test for kwd in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3', 'X', 'Y', 'Z-']):
+                        ha_movimenti = True
+                        break
+                if not ha_movimenti:
+                    # Rimuoviamo tutto il blocco dal cambio utensile fino a M30 (escluso M30 che riposizioniamo subito dopo)
+                    m30_riga = righe_elaborate[idx_m30]
+                    righe_elaborate = righe_elaborate[:j]
+                    righe_elaborate.append(m30_riga)
+                break
+            j -= 1
 
     return "\n".join(righe_elaborate)
 
