@@ -55,6 +55,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     header_iniziale_inserito = False
     in_ciclo_foratura = False
     utensile_corrente = None
+    inserito_primo_g64_utensile = False
     
     x_corrente = 0.0
     y_corrente = 0.0
@@ -105,7 +106,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
             n_linea += 2
             header_iniziale_inserito = True
-            modo_movimento_corrente = "G00"
             continue
 
         if re.search(r'\bG49\b', clean, re.IGNORECASE):
@@ -115,6 +115,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if match_cambio:
             t_num = match_cambio.group(1)
             utensile_corrente = t_num
+            inserito_primo_g64_utensile = False
             descrizione = utensili_info.get(t_num, "")
 
             if descrizione:
@@ -130,7 +131,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             
             righe_elaborate.append(f"N{n_linea} G00 G90 G54")
             n_linea += 2
-            modo_movimento_corrente = "G00"
             
             s_val = "S4400"
             m_s = re.search(r'S(\d+)', clean, re.IGNORECASE)
@@ -152,8 +152,11 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             except Exception:
                 pass
 
-            # Rimosso l'inserimento dell'acqua qui (ora contiene solo velocità, M3 e pre-selezione utensile)
-            righe_elaborate.append(f"N{n_linea} {s_val} M3 T{prox_t}")
+            codice_acc = "M51" if t_num in ["1", "4"] else "M8"
+            if t_num == "6":
+                codice_acc = "M8"
+
+            righe_elaborate.append(f"N{n_linea} {s_val} M3 T{prox_t} {codice_acc}")
             n_linea += 2
             continue
 
@@ -173,14 +176,8 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         clean = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', clean)
         clean = re.sub(r'\s+', ' ', clean).strip()
         
-        # Gestione esplicita della Z di alzata a fine passata (deve avere G00)
-        if clean in ["Z3", "Z100", "G00 Z3", "G0 Z3", "G00 Z100", "G0 Z100"]:
-            z_target = "Z100" if "100" in clean else "Z3"
-            clean = f"G00 {z_target}"
-            modo_movimento_corrente = "G00"
-            righe_elaborate.append(f"N{n_linea} {clean}")
-            n_linea += 2
-            continue
+        if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
+            clean = "Z3"
 
         if clean.startswith("G81") or clean.startswith("G84"):
             in_ciclo_foratura = True
@@ -189,7 +186,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             resto = " ".join(parts[1:])
             resto = re.sub(r'J\d+', 'R3', resto)
             clean = f"G99 {cmd_g} {resto}"
-            modo_movimento_corrente = "G00"
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             continue
@@ -197,12 +193,11 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if clean.startswith("G80"):
             in_ciclo_foratura = False
 
-        # Gestione G41 / G42 / G40
-        if "G41" in clean or "G42" in clean or "G40" in clean:
+        if "G41" in clean or "G42" in clean:
             if not any(k in clean for k in ['X', 'Y', 'Z']) and i < len(righe_greffe):
                 prossima_riga = righe_greffe[i].strip()
                 prossima_riga = re.sub(r'^N\d+\s*', '', prossima_riga)
-                if any(k in prossima_riga for k in ['X', 'Y', 'Z']):
+                if any(k in prossima_riga for k in ['X', 'Y']):
                     clean += " " + prossima_riga
                     i += 1
             modo_movimento_corrente = "G01"
@@ -210,32 +205,54 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             n_linea += 2
             continue
 
-        # Gestione modale G00 / G01 / Archi rigorosa
-        is_g01_explicit = clean.startswith("G01") or clean.startswith("G1 ")
-        is_g_speciale = any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"])
-        is_g00_explicit = clean.startswith("G00") or clean.startswith("G0 ")
-        
-        if is_g_speciale:
-            modo_movimento_corrente = "G01"
-        elif is_g01_explicit:
-            clean = re.sub(r'^G0?1\s*', '', clean).strip()
-            if modo_movimento_corrente != "G01":
-                clean = f"G01 {clean}".strip()
-                modo_movimento_corrente = "G01"
-        elif is_g00_explicit:
-            clean = re.sub(r'^G0?0?\s*', '', clean).strip()
-            if modo_movimento_corrente != "G00":
-                clean = f"G00 {clean}".strip()
-                modo_movimento_corrente = "G00"
-        else:
-            if any(k in clean for k in ['X', 'Y', 'Z']) and not in_ciclo_foratura:
-                clean = re.sub(r'^G0?0?\s*', '', clean)
-                clean = re.sub(r'^G0?1\s*', '', clean)
-                clean = clean.strip()
-                if modo_movimento_corrente == "G00":
-                    clean = f"G00 {clean}".strip()
+        if "G40" in clean:
+            if not any(k in clean for k in ['X', 'Y', 'Z']) and i < len(righe_greffe):
+                prossima_riga = righe_greffe[i].strip()
+                prossima_riga = re.sub(r'^N\d+\s*', '', prossima_riga)
+                if any(k in prossima_riga for k in ['X', 'Y', 'Z']):
+                    clean += " " + prossima_riga
+                    i += 1
+            righe_elaborate.append(f"N{n_linea} {clean}")
+            n_linea += 2
+            continue
 
-        # Conversione di I e J da assoluto a incrementale per archi
+        is_z_rapido = False
+        if ("Z" in clean and not "Z-" in clean and not any(g in clean for g in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3'])) or clean in ["Z3", "Z100"]:
+            is_pre_foratura = False
+            for look_ahead_idx in range(i, min(i + 3, len(righe_greffe))):
+                if any(g in righe_greffe[look_ahead_idx] for g in ['G81', 'G84']):
+                    is_pre_foratura = True
+                    break
+            if not is_pre_foratura:
+                is_z_rapido = True
+
+        if is_z_rapido and not in_ciclo_foratura:
+            if inserito_primo_g64_utensile:
+                righe_elaborate.append(f"N{n_linea} G64")
+                n_linea += 2
+            else:
+                inserito_primo_g64_utensile = True
+            
+            modo_movimento_corrente = "G00"
+            clean = re.sub(r'^G0?1\s*', '', clean)
+            clean = re.sub(r'^G0?0?\s*', '', clean)
+            if not clean.startswith("Z"):
+                clean = f"G00 {clean}".strip()
+
+        is_g_speciale = any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"])
+        
+        if "G02" in clean or "G2" in clean or "G03" in clean or "G3" in clean:
+            modo_movimento_corrente = "G01"
+
+        if clean.startswith("G00") or clean.startswith("G0 "):
+            modo_movimento_corrente = "G00"
+        elif is_g_speciale:
+            pass
+        elif clean.startswith("G01") or clean.startswith("G1 "):
+            modo_movimento_corrente = "G01"
+            clean = re.sub(r'^G0?1\s*', '', clean)
+            clean = f"G01 {clean}"
+
         if any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"]):
             m_i = re.search(r'\bI(-?\d+\.?\d*)', clean)
             m_j = re.search(r'\bJ(-?\d+\.?\d*)', clean)
