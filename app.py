@@ -276,7 +276,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             modo_movimento_corrente = "G00"
             clean = re.sub(r'^G0?0?\s*', '', clean)
         elif is_g_speciale:
-            pass  # Gestito sotto per il calcolo e impostazione del G01 successivo
+            modo_movimento_corrente = "G01"
         elif clean.startswith("G01") or clean.startswith("G1 "):
             modo_movimento_corrente = "G01"
             clean = re.sub(r'^G0?1\s*', '', clean)
@@ -299,8 +299,8 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 else:
                     clean += f" J{j_inc:g}"
             
-            # REGOLA: DOPO G02/G03 IL MODO CORRENTE TORNA OBBLIGATORIAMENTE A G01
-            modo_movimento_corrente = "G01"
+            # Forza l'emissione del G01 nel blocco successivo azzerando l'ultimo modo emesso
+            ultimo_modo_emesso = "G02_OR_G03"
 
         m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', clean)
         if m_x_upd:
