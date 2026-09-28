@@ -8,17 +8,23 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     righe_greffe = testo_selca.strip().split('\n')
     righe_elaborate = []
     
-    # 1. Parsing preliminare per estrarre gli utensili in ordine e associarli alle descrizioni
-    utensili_info = [] 
+    # 1. Parsing preliminare avanzato per estrarre gli utensili e le descrizioni
+    utensili_info = {} 
     for riga in righe_greffe:
         riga_clean = riga.strip()
-        match_t = re.search(r'T(\d+)\s+M6\b\s*[\(\[]\s*(.*?)\s*[\)\]]?', riga_clean, re.IGNORECASE)
+        # Cerca T... M6 e la descrizione in qualsiasi parentesi o inline
+        match_t = re.search(r'T(\d+)\s+M6\b', riga_clean, re.IGNORECASE)
         if match_t:
             t_num = match_t.group(1)
-            t_desc = match_t.group(2).strip()
-            utensili_info.append((t_num, t_desc))
+            # Cerca testo descrittivo tra parentesi quadre o tonde nella stessa riga
+            match_desc = re.search(r'[\(\[]\s*(.*?)\s*[\)\]]', riga_clean)
+            if match_desc:
+                utensili_info[t_num] = match_desc.group(1).strip()
+            else:
+                utensili_info[t_num] = ""
 
-    t_sequenza = [t[0] for t in utensili_info]
+    # Estrae la sequenza ordinata degli utensili
+    t_sequenza = list(utensili_info.keys())
     
     n_linea = 2
     modo_movimento_corrente = None
@@ -47,7 +53,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not clean:
             continue
             
-        # Salta i comandi G49 (rimozione compensazione utensile come richiesto)
+        # Salta i comandi G49
         if re.search(r'\bG49\b', clean, re.IGNORECASE):
             continue
             
@@ -55,15 +61,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         match_cambio = re.search(r'T(\d+)\s+M6\b', clean, re.IGNORECASE)
         if match_cambio:
             t_num = match_cambio.group(1)
-            
-            descrizione = ""
-            for item in utensili_info:
-                if item[0] == t_num:
-                    descrizione = item[1]
-                    break
-            if not descrizione:
-                m_inline = re.search(r'[\(\[]\s*(.*?)\s*[\)\]]', clean)
-                descrizione = m_inline.group(1).strip() if m_inline else ""
+            descrizione = utensili_info.get(t_num, "")
 
             prossimo_t = ""
             try:
@@ -73,7 +71,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             except ValueError:
                 pass
 
-            # Ripristinata correttamente la stampa del commento con il numero utensile anche se manca la descrizione
+            # Stampa corretta del commento utensile come a sinistra
             if descrizione:
                 desc_str = f" ( T{t_num} - {descrizione} )"
             else:
@@ -130,14 +128,20 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             resto = re.sub(r'J\d+', 'R3', resto)
             clean = f"G99 {cmd_g} {resto}"
 
-        # Riconoscimento se è un movimento di lavoro
-        is_lavoro = clean.startswith("G01") or clean.startswith("G1 ") or ("Z-" in clean and "F" in clean) or (modo_movimento_corrente == "G01" and ("Z-" in clean or "X" in clean or "Y" in clean))
+        # Preservazione G41, G42, G40, G02, G03
+        is_g_speciale = any(clean.startswith(g) for g in ["G41", "G42", "G40", "G02", "G2", "G03", "G3"])
+        is_lavoro = is_g_speciale or clean.startswith("G01") or clean.startswith("G1 ") or ("Z-" in clean and "F" in clean) or (modo_movimento_corrente == "G01" and ("Z-" in clean or "X" in clean or "Y" in clean))
         is_z_rapido = False
 
         if clean.startswith("G00") or clean.startswith("G0 "):
             modo_movimento_corrente = "G00"
             if "Z" in clean and not "Z-" in clean:
                 is_z_rapido = True
+        elif is_g_speciale:
+            # I comandi di compensazione o arco mantengono la loro natura
+            if clean.startswith("G02") or clean.startswith("G2") or clean.startswith("G03") or clean.startswith("G3"):
+                modo_movimento_corrente = "G01" # Trattato come asse di lavoro
+            pass
         elif is_lavoro:
             if modo_movimento_corrente != "G01":
                 if righe_elaborate and righe_elaborate[-1].endswith("G64"):
