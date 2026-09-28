@@ -41,7 +41,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
             utensili_info[t_num] = descrizione
 
-    # Se T4 non ha M6 esplicito ma è stato definito nei commenti in testa, recuperiamo la descrizione
     if "4" not in utensili_info:
         for riga in righe_greffe:
             if "T4" in riga and ("D." in riga or "PUNTA" in riga):
@@ -63,6 +62,8 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             if "4" not in t_sequenza_ordinata:
                 t_sequenza_ordinata.append("4")
 
+    primo_utensile = t_sequenza_ordinata[0] if t_sequenza_ordinata else "1"
+    
     n_linea = 2
     modo_movimento_corrente = None
     header_iniziale_inserito = False
@@ -86,7 +87,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 commento += ')'
             righe_elaborate.append(commento)
             
-            # Intercetta se il commento introduce i prefori per inserire T4 se non ancora fatto
             if "PREFORI PER M6" in commento.upper() and utensile_corrente != "4":
                 utensile_corrente = "4"
                 descrizione = utensili_info.get("4", "PUNTA FORATA")
@@ -110,7 +110,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if re.search(r'\bG49\b', clean, re.IGNORECASE):
             continue
             
-        # Intercetta il cambio utensile standard (Tn M6)
         match_cambio = re.search(r'\bT(\d+)\s+M6\b', clean, re.IGNORECASE)
         if match_cambio:
             t_num = match_cambio.group(1)
@@ -169,13 +168,19 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             n_linea += 2
             continue
             
+        # Gestione della 'R' finale tipica di Selca (indica movimento rapido G00)
+        if re.search(r'\bR\s*$', clean):
+            clean = re.sub(r'\bR\s*$', '', clean).strip()
+            if not clean.startswith("G00") and not clean.startswith("G0"):
+                clean = f"G00 {clean}"
+            modo_movimento_corrente = "G00"
+
         clean = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', clean)
         clean = re.sub(r'\s+', ' ', clean).strip()
         
         if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
             clean = "Z3"
 
-        # Gestione cicli di foratura / maschiatura (G81 / G84)
         if clean.startswith("G81") or clean.startswith("G84"):
             in_ciclo_foratura = True
             parts = clean.split()
@@ -230,9 +235,15 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
         is_z_rapido = False
         if ("Z" in clean and not "Z-" in clean and not any(g in clean for g in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3'])) or clean in ["Z3", "Z100"]:
-            is_z_rapido = True
+            # Verifica se ci troviamo immediatamente prima di un ciclo di foratura
+            is_pre_foratura = False
+            for look_ahead_idx in range(i, min(i + 3, len(righe_greffe))):
+                if any(g in righe_greffe[look_ahead_idx] for g in ['G81', 'G84']):
+                    is_pre_foratura = True
+                    break
+            if not is_pre_foratura:
+                is_z_rapido = True
 
-        # Inserisce G64 solo se NON siamo dentro un ciclo di foratura
         if is_z_rapido and not in_ciclo_foratura:
             righe_elaborate.append(f"N{n_linea} G64")
             n_linea += 2
@@ -261,6 +272,20 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
         
+    # Chiusura finale pulita richiesta
+    descrizione_primo = utensili_info.get(primo_utensile, "")
+    if descrizione_primo:
+        if re.match(rf'^T\s*{primo_utensile}\b', descrizione_primo, re.IGNORECASE):
+            desc_str_finale = f" ( {descrizione_primo} )"
+        else:
+            desc_str_finale = f" ( T{primo_utensile} - {descrizione_primo} )"
+    else:
+        desc_str_finale = f" ( T{primo_utensile} )"
+
+    righe_elaborate.append(f"N{n_linea} T{primo_utensile} M06 M5 M9{desc_str_finale}")
+    n_linea += 2
+    righe_elaborate.append(f"N{n_linea} M30")
+
     return "\n".join(righe_elaborate)
 
 
