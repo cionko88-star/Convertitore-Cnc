@@ -27,9 +27,17 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                     if match_desc_prev:
                         descrizione = match_desc_prev.group(1).strip()
             
-            # Se la descrizione non contiene già il prefisso T{num} - ma ha il nome dell'utensile, lo manteniamo integro
+            # Se la descrizione non è stata trovata sulla riga M6, cerchiamo nella testata del programma
+            if not descrizione:
+                for r_testa in righe_greffe[:30]:
+                    m_testa = re.search(rf'\bT\s*{t_num}\b\s*[:-]?\s*(.*)', r_testa, re.IGNORECASE)
+                    if m_testa:
+                        descrizione = m_testa.group(1).strip()
+                        break
+            
             utensili_info[t_num] = descrizione
 
+    # Seleziona l'elenco ordinato degli utensili presenti nel codice
     t_sequenza = list(utensili_info.keys())
     
     n_linea = 2
@@ -86,7 +94,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
             # Formattazione esatta con il nome completo dell'utensile preservato
             if descrizione:
-                # Se la descrizione utente ha già la T (es. T2 - FRESA...), la usiamo pulita, altrimenti la componiamo
                 if re.match(rf'^T\s*{t_num}\b', descrizione, re.IGNORECASE):
                     desc_str = f" ( {descrizione} )"
                 else:
