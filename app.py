@@ -8,11 +8,11 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     righe_greffe = testo_selca.strip().split('\n')
     righe_elaborate = []
     
-    # 1. Parsing preliminare per trovare le descrizioni degli utensili
+    # 1. Parsing preliminare per trovare le descrizioni degli utensili (supporta M6 e M06)
     utensili_info = {} 
     for idx, riga in enumerate(righe_greffe):
         riga_clean = riga.strip()
-        match_t = re.search(r'\bT(\d+)\s+M6\b', riga_clean, re.IGNORECASE)
+        match_t = re.search(r'\bT(\d+)\s+M0?6\b', riga_clean, re.IGNORECASE)
         if match_t:
             t_num = match_t.group(1)
             descrizione = ""
@@ -53,7 +53,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
     t_sequenza_ordinata = []
     for riga in righe_greffe:
-        m_t = re.search(r'\bT(\d+)\s+M6\b', riga, re.IGNORECASE)
+        m_t = re.search(r'\bT(\d+)\s+M0?6\b', riga, re.IGNORECASE)
         if m_t:
             t_num = m_t.group(1)
             if t_num not in t_sequenza_ordinata:
@@ -113,7 +113,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if re.search(r'\bG49\b', clean, re.IGNORECASE):
             continue
             
-        match_cambio = re.search(r'\bT(\d+)\s+M6\b', clean, re.IGNORECASE)
+        match_cambio = re.search(r'\bT(\d+)\s+M0?6\b', clean, re.IGNORECASE)
         if match_cambio:
             t_num = match_cambio.group(1)
             utensile_corrente = t_num
@@ -277,8 +277,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
 
-    # Controllo post-elaborazione: se prima di M30 ci sono righe di cambio utensile non seguite da lavorazioni, le rimuoviamo
-    # Cerchiamo l'indice di M30
+    # Post-elaborazione: rimozione blocco utensile finale non seguito da lavorazioni prima di M30
     idx_m30 = -1
     for idx, riga in enumerate(righe_elaborate):
         if "M30" in riga:
@@ -286,15 +285,9 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             break
             
     if idx_m30 > 0:
-        # Controlliamo se nelle righe subito prima di M30 c'è un T... M06 isolato
-        # Scorriamo all'indietro da prima di M30
         j = idx_m30 - 1
-        ha_lavorazioni_dopo_ultimo_t = False
         while j >= 0:
             if "M06" in righe_elaborate[j]:
-                # Trovato un cambio utensile prima di M30. Verificamone la necessità:
-                # Se tra questo M06 e M30 NON ci sono movimenti di lavoro (G01, G02, G03, X, Y, ecc.), eliminiamo tutto il blocco!
-                # Verifichiamo se c'è almeno una riga con X, Y, Z o G01/G02/G03 tra j e idx_m30
                 ha_movimenti = False
                 for k in range(j + 1, idx_m30):
                     r_test = righe_elaborate[k]
@@ -302,7 +295,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                         ha_movimenti = True
                         break
                 if not ha_movimenti:
-                    # Rimuoviamo tutto il blocco dal cambio utensile fino a M30 (escluso M30 che riposizioniamo subito dopo)
                     m30_riga = righe_elaborate[idx_m30]
                     righe_elaborate = righe_elaborate[:j]
                     righe_elaborate.append(m30_riga)
