@@ -99,14 +99,12 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         clean = re.sub(r'^N\d+\s*', '', riga_grezza)
         if not clean:
             continue
-            
-        # =========================================================================
-        # INTERCETTAZIONE IMMEDIATA E FORZATA DI G61.1 (NON TOCCARE DA ALTRE REGOLE)
-        # =========================================================================
+
+        # --- GESTIONE PRIORITARIA DI G61.1 (RIPRISTINATA DAI VECCHI SCRIPT) ---
         if re.search(r'\bG61\.1\b', clean, re.IGNORECASE):
-            riga_pulita = re.sub(r'\s+', ' ', clean).strip()
-            riga_pulita = re.sub(r'g61\.1', 'G61.1', riga_pulita, flags=re.IGNORECASE)
-            righe_elaborate.append(f"N{n_linea} {riga_pulita}")
+            clean_g61 = re.sub(r'\s+', ' ', clean).strip()
+            clean_g61 = re.sub(r'g61\.1', 'G61.1', clean_g61, flags=re.IGNORECASE)
+            righe_elaborate.append(f"N{n_linea} {clean_g61}")
             n_linea += 2
             continue
 
@@ -178,13 +176,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             n_linea += 2
             continue
             
-        # Gestione della 'R' finale
-        if re.search(r'\bR\s*$', clean):
-            clean = re.sub(r'\bR\s*$', '', clean).strip()
-            if not clean.startswith("G00") and not clean.startswith("G0"):
-                clean = f"G00 {clean}"
-            modo_movimento_corrente = "G00"
-
         clean = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', clean)
         clean = re.sub(r'\s+', ' ', clean).strip()
         
