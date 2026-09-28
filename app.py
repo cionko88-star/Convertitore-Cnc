@@ -76,25 +76,15 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             if not commento.endswith(')'):
                 commento += ')'
             
-            # Gestione intestazione personalizzata Mazak
             if "DATA:" in commento.upper():
                 commento = "(Data: 07-08-18 CHRISTIAN ---- 06-05-2025 CONVERTITO PER MAZAK)"
             if "MACCHINA:" in commento.upper():
                 commento = "(MACCHINA: MAZAK)"
 
             if commento.startswith("("):
-                righe_elaborate.append("")  # Riga vuota prima delle sezioni principali
+                righe_elaborate.append("")
             
             righe_elaborate.append(commento)
-            
-            if "PREFORI PER M6" in commento.upper() and utensile_corrente != "4":
-                utensile_corrente = "4"
-                inserito_primo_g64_utensile = False
-                descrizione = utensili_info.get("4", "PUNTA FORATA")
-                righe_elaborate.append(f"N{n_linea} T4 M06 M5 M9 ( T4 - {descrizione} )")
-                n_linea += 2
-                righe_elaborate.append(f"N{n_linea} G00 G90 G54")
-                n_linea += 2
             continue
             
         clean = re.sub(r'^N\d+\s*', '', riga_grezza)
@@ -107,8 +97,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if "M30" in clean.upper():
             if len(t_sequenza_ordinata) > 0:
                 primo_t = t_sequenza_ordinata[0]
-                descrizione = utensili_info.get(primo_t, "")
-                desc_str = f" ( T{primo_t} - {descrizione} )" if descrizione else f" ( T{primo_t} )"
                 righe_elaborate.append(f"N{n_linea} T{primo_t} M06 M5 M9")
                 n_linea += 2
             righe_elaborate.append(f"N{n_linea} M30")
@@ -154,18 +142,17 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                     s_val = f"S{m_s_next.group(1)}"
                     i += 1
 
-            # Determina il prossimo utensile per la pre-selezione
-            prox_t = ""
+            # Sicurezza nella pre-selezione del prossimo utensile
+            prox_t = "1"
             try:
-                current_idx_seq = t_sequenza_ordinata.index(t_num)
-                if current_idx_seq + 1 < len(t_sequenza_ordinata):
-                    prox_t = t_sequenza_ordinata[current_idx_seq + 1]
-                else:
+                idx_curr = t_sequenza_ordinata.index(t_num)
+                if idx_curr + 1 < len(t_sequenza_ordinata):
+                    prox_t = t_sequenza_ordinata[idx_curr + 1]
+                elif len(t_sequenza_ordinata) > 0:
                     prox_t = t_sequenza_ordinata[0]
-            except ValueError:
-                prox_t = "2"
+            except Exception:
+                pass
 
-            # Gestione codice adduzione/refrigerante successivo
             codice_acc = "M51" if t_num in ["1", "4"] else "M8"
             if t_num == "6":
                 codice_acc = "M8"
@@ -202,21 +189,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             clean = f"G99 {cmd_g} {resto}"
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
-            
-            while i < len(righe_greffe):
-                riga_successiva_grezza = righe_greffe[i].strip()
-                if not riga_successiva_grezza or riga_successiva_grezza.startswith('(') or riga_successiva_grezza.startswith('['):
-                    break
-                test_prox = re.sub(r'^N\d+\s*', '', riga_successiva_grezza)
-                test_prox = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', test_prox)
-                test_prox = re.sub(r'\s+', ' ', test_prox).strip()
-                
-                if "G64" in test_prox or "G80" in test_prox or "Z" in test_prox:
-                    break
-                if any(k in test_prox for k in ['X', 'Y']):
-                    i += 1
-                    break
-                break
             continue
 
         if clean.startswith("G80"):
@@ -265,10 +237,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             modo_movimento_corrente = "G00"
             clean = re.sub(r'^G0?1\s*', '', clean)
             clean = re.sub(r'^G0?0?\s*', '', clean)
-            # Rimuove G00 sui movimenti Z puri per adeguarsi al formato pulito
-            if clean.startswith("Z"):
-                pass
-            else:
+            if not clean.startswith("Z"):
                 clean = f"G00 {clean}".strip()
 
         is_g_speciale = any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"])
@@ -284,11 +253,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             modo_movimento_corrente = "G01"
             clean = re.sub(r'^G0?1\s*', '', clean)
             clean = f"G01 {clean}"
-        else:
-            if modo_movimento_corrente == "G01" and any(k in clean for k in ['X', 'Y', 'Z']):
-                pass
 
-        # Conversione di I e J da assoluto a incrementale per archi
         if any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"]):
             m_i = re.search(r'\bI(-?\d+\.?\d*)', clean)
             m_j = re.search(r'\bJ(-?\d+\.?\d*)', clean)
@@ -323,3 +288,111 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         n_linea += 2
 
     return "\n".join(righe_elaborate)
+
+
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Convertitore CNC SELCA ➔ ISO</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        body { display: flex; height: 100vh; background-color: #f7f6f0; color: #1e293b; }
+        .sidebar { width: 250px; background-color: #1e293b; color: #fff; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+        .logo { font-size: 18px; font-weight: bold; color: #38bdf8; }
+        .main-content { flex: 1; padding: 30px; overflow-y: auto; }
+        .header-title { font-size: 26px; font-weight: 800; color: #0f172a; margin-bottom: 15px; }
+        .control-bar { display: flex; align-items: center; gap: 20px; margin-bottom: 15px; background: #fff; padding: 12px 20px; border-radius: 10px; border: 1px solid #e2e8f0; flex-wrap: wrap; }
+        .direction-badge { font-weight: 700; color: #0d9488; }
+        .input-group { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #334155; }
+        .input-group input { padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; width: 180px; }
+        .workspace { display: flex; gap: 20px; }
+        .card { flex: 1; background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; }
+        textarea { width: 100%; height: 420px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 13px; resize: none; background: #fafafa; }
+        textarea.output { background: #0f172a; color: #38bdf8; }
+        .actions { display: flex; justify-content: space-between; margin-top: 15px; }
+        .btn { padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; font-size: 14px; }
+        .btn-primary { background-color: #0d9488; color: #fff; }
+        .btn-secondary { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">&lt;/&gt; CNC CONVERTER</div>
+    </div>
+    <div class="main-content">
+        <h1 class="header-title">Convertitore CNC SELCA ➔ ISO</h1>
+        <form method="POST" action="/converti" id="mainForm">
+            <div class="control-bar">
+                <span>Modalità:</span>
+                <span class="direction-badge">SELCA ➔ ISO (.eia)</span>
+                <div class="input-group">
+                    <label for="nome_programma">Nome File Output:</label>
+                    <input type="text" id="nome_programma" name="nome_programma" value="{{ nome_programma or '200011974-A' }}">
+                </div>
+            </div>
+            <div class="workspace">
+                <div class="card">
+                    <h3>Codice Sorgente (SELCA)</h3>
+                    <textarea name="codice_sorgente" placeholder="Incolla il programma Selca...">{{ codice_sorgente }}</textarea>
+                    <div class="actions">
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">📁 Carica file</button>
+                        <input type="file" id="fileInput" style="display:none" onchange="caricaFile(this)">
+                        <button type="submit" class="btn btn-primary">⚙️ Converti</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Codice Convertito (ISO)</h3>
+                    <textarea class="output" readonly>{{ codice_convertito }}</textarea>
+                    <div class="actions" style="justify-content: flex-end;">
+                        <button type="submit" formaction="/scarica" class="btn btn-primary">Scarica File</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+    <script>
+        function caricaFile(input) {
+            let file = input.files[0];
+            if (file) {
+                let reader = new FileReader();
+                reader.onload = function(e) {
+                    document.querySelector("textarea[name='codice_sorgente']").value = e.target.result;
+                };
+                reader.readAsText(file);
+            }
+        }
+    </script>
+</body>
+</html>
+"""
+
+@app.route('/')
+def index():
+    return render_template_string(HTML_TEMPLATE, codice_sorgente="", codice_convertito="", nome_programma="200011974-A")
+
+@app.route('/converti', methods=['POST'])
+def converti():
+    codice_sorgente = request.form.get('codice_sorgente', '')
+    nome_programma = request.form.get('nome_programma', '200011974-A').strip()
+    codice_convertito = converti_selca_a_iso(codice_sorgente)
+    return render_template_string(HTML_TEMPLATE, codice_sorgente=codice_sorgente, codice_convertito=codice_convertito, nome_programma=nome_programma)
+
+@app.route('/scarica', methods=['POST'])
+def scarica():
+    codice_sorgente = request.form.get('codice_sorgente', '')
+    nome_programma = request.form.get('nome_programma', '200011974-A').strip()
+    codice_convertito = converti_selca_a_iso(codice_sorgente)
+    
+    nome_file_pulito = re.sub(r'\.eia$', '', nome_programma, flags=re.IGNORECASE)
+    
+    return Response(
+        codice_convertito, 
+        mimetype="text/plain", 
+        headers={"Content-disposition": f"attachment; filename={nome_file_pulito}.eia"}
+    )
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
