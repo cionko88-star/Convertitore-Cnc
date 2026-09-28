@@ -33,7 +33,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                         descrizione = m_testa.group(1).strip()
                         break
             
-            # Pulisce la descrizione tagliando tutto ciò che si trova dopo il diametro
             if descrizione:
                 match_taglio = re.search(r'(.*?-?\s*D\.\d+(?:\.\d+)?)', descrizione, re.IGNORECASE)
                 if match_taglio:
@@ -43,6 +42,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             utensili_info[t_num] = descrizione
 
     t_sequenza = list(utensili_info.keys())
+    primo_utensile = t_sequenza[0] if t_sequenza else "1"
     
     n_linea = 2
     modo_movimento_corrente = None
@@ -154,12 +154,13 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             
-            # Salta la riga successiva se ripete identica la prima coordinata del foro
+            # Salta la prima riga di posizionamento subito successiva al G81/G84 (ormai integrata nel ciclo)
             if i < len(righe_greffe):
                 prossima_riga_test = re.sub(r'^N\d+\s*', '', righe_greffe[i]).strip()
                 prossima_riga_test = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', prossima_riga_test)
                 prossima_riga_test = re.sub(r'\s+', ' ', prossima_riga_test).strip()
-                if clean.endswith(prossima_riga_test) or whips_match_coords(clean, prossima_riga_test):
+                # Se la riga successiva contiene solo coordinate X/Y o è un G00/G01 con le stesse coordinate, la salta
+                if any(k in prossima_riga_test for k in ['X', 'Y']) and not any(k in prossima_riga_test for k in ['Z', 'G80', 'G0', 'G1']):
                     i += 1
             continue
 
@@ -218,17 +219,25 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
         
-    return "\n".join(righe_elaborate)
+    # Chiusura finale con il primo utensile e M30
+    descrizione_primo = utensili_info.get(primo_utensile, "")
+    if descrizione_primo:
+        if re.match(rf'^T\s*{primo_utensile}\b', descrizione_primo, re.IGNORECASE):
+            desc_str_finale = f" ( {descrizione_primo} )"
+        else:
+            desc_str_finale = f" ( T{primo_utensile} - {descrizione_primo} )"
+    else:
+        desc_str_finale = f" ( T{primo_utensile} )"
 
-def whips_match_coords(riga_g81: str, riga_succ: str) -> bool:
-    m_x1 = re.search(r'X(-?\d+\.?\d*)', riga_g81)
-    m_y1 = re.search(r'Y(-?\d+\.?\d*)', riga_g81)
-    m_x2 = re.search(r'X(-?\d+\.?\d*)', riga_succ)
-    m_y2 = re.search(r'Y(-?\d+\.?\d*)', riga_succ)
-    
-    x_match = (not m_x1 and not m_x2) or (m_x1 and m_x2 and m_x1.group(1) == m_x2.group(1))
-    y_match = (not m_y1 and not m_y2) or (m_y1 and m_y2 and m_y1.group(1) == m_y2.group(1))
-    return x_match and y_match
+    righe_elaborate.append(f"N{n_linea} T{primo_utensile} M06 M5 M9{desc_str_finale}")
+    n_linea += 2
+    righe_elaborate.append(f"N{n_linea} G00 G90 G54")
+    n_linea += 2
+    righe_elaborate.append(f"N{n_linea} S4400 M3")
+    n_linea += 2
+    righe_elaborate.append(f"N{n_linea} M30")
+
+    return "\n".join(righe_elaborate)
 
 
 HTML_TEMPLATE = """
