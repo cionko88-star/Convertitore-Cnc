@@ -8,7 +8,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     righe_greffe = testo_selca.strip().split('\n')
     righe_elaborate = []
     
-    # 1. Parsing preliminare per trovare tutte le descrizioni degli utensili nel formato richiesto
+    # 1. Parsing preliminare per trovare tutte le descrizioni degli utensili preservando tutto il testo
     utensili_info = {} 
     for idx, riga in enumerate(righe_greffe):
         riga_clean = riga.strip()
@@ -16,7 +16,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if match_t:
             t_num = match_t.group(1)
             descrizione = ""
-            # Cerca la descrizione tra parentesi sulla stessa riga o su quella precedente
+            # Cerca il testo descrittivo tra parentesi tonde o quadre
             match_desc = re.search(r'[\(\[]\s*(.*?)\s*[\)\]]', riga_clean)
             if match_desc:
                 descrizione = match_desc.group(1).strip()
@@ -27,8 +27,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                     if match_desc_prev:
                         descrizione = match_desc_prev.group(1).strip()
             
-            # Pulisce la descrizione da prefissi doppi tipo T2 se già presenti dentro
-            descrizione = re.sub(r'^T\d+\s*-\s*', '', descrizione, flags=re.IGNORECASE).strip()
+            # Se la descrizione non contiene già il prefisso T{num} - ma ha il nome dell'utensile, lo manteniamo integro
             utensili_info[t_num] = descrizione
 
     t_sequenza = list(utensili_info.keys())
@@ -85,9 +84,13 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             except ValueError:
                 pass
 
-            # Formattazione esatta richiesta: ( T2 - FRESA 4TG. MET. DURO - D.16 )
+            # Formattazione esatta con il nome completo dell'utensile preservato
             if descrizione:
-                desc_str = f" ( T{t_num} - {descrizione} )"
+                # Se la descrizione utente ha già la T (es. T2 - FRESA...), la usiamo pulita, altrimenti la componiamo
+                if re.match(rf'^T\s*{t_num}\b', descrizione, re.IGNORECASE):
+                    desc_str = f" ( {descrizione} )"
+                else:
+                    desc_str = f" ( T{t_num} - {descrizione} )"
             else:
                 desc_str = f" ( T{t_num} )"
 
