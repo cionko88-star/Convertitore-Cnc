@@ -100,14 +100,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not clean:
             continue
 
-        # --- GESTIONE PRIORITARIA DI G61.1 (RIPRISTINATA DAI VECCHI SCRIPT) ---
-        if re.search(r'\bG61\.1\b', clean, re.IGNORECASE):
-            clean_g61 = re.sub(r'\s+', ' ', clean).strip()
-            clean_g61 = re.sub(r'g61\.1', 'G61.1', clean_g61, flags=re.IGNORECASE)
-            righe_elaborate.append(f"N{n_linea} {clean_g61}")
-            n_linea += 2
-            continue
-
         if re.search(r'\bG17\b', clean, re.IGNORECASE) or re.search(r'\bO1\b', clean, re.IGNORECASE) or re.search(r'\b1\b', clean):
             if not header_iniziale_inserito:
                 righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
@@ -268,6 +260,13 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         else:
             if modo_movimento_corrente == "G01" and any(k in clean for k in ['X', 'Y', 'Z']):
                 pass
+
+        # =========================================================================
+        # INSERIMENTO AUTOMATICO DI G61.1 PRIMA DI OGNI SPOSTAMENTO IN Z IN G1
+        # =========================================================================
+        ha_z = bool(re.search(r'\bZ-?\d+', clean))
+        if ha_z and modo_movimento_corrente == "G01" and not in_ciclo_foratura and not "G61.1" in clean:
+            clean = f"G61.1 {clean}".strip()
 
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
