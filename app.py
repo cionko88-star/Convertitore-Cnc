@@ -109,6 +109,11 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             continue
 
         if "M30" in clean.upper():
+            # Inserimento del richiamo del primo utensile prima di M30, se disponibile
+            if t_sequenza_ordinata:
+                primo_t = t_sequenza_ordinata[0]
+                righe_elaborate.append(f"N{n_linea} T{primo_t} M51")
+                n_linea += 2
             righe_elaborate.append(f"N{n_linea} M30")
             break
 
@@ -287,7 +292,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 i_inc = i_abs - x_corrente
                 j_inc = j_abs - y_corrente
                 
-                # Sostituisci o aggiungi I e J incrementali formattati puliti
                 if m_i:
                     clean = re.sub(r'\bI-?\d+\.?\d*', f'I{i_inc:g}', clean)
                 else:
