@@ -100,6 +100,11 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not clean:
             continue
 
+        # Se incontriamo M30, interrompiamo subito la conversione per evitare righe duplicate o spurie alla fine
+        if "M30" in clean.upper():
+            righe_elaborate.append(f"N{n_linea} M30")
+            break
+
         if (re.search(r'\bG17\b', clean, re.IGNORECASE) or re.search(r'\bO1\b', clean, re.IGNORECASE)) and not header_iniziale_inserito:
             righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
             n_linea += 2
@@ -272,17 +277,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
-
-    # Pulizia finale: se dopo l'ultimo cambio utensile ci sono solo posizionamenti rapidi (G00...) o avvii mandrino senza lavorazioni successive, li rimuoviamo
-    while len(righe_elaborate) >= 3:
-        ultima_riga = righe_elaborate[-1]
-        penultima_riga = righe_elaborate[-2]
-        # Se la penultima riga è un G00 G90 G54 (o simile) e l'ultima contiene S... M3 e T..., rimuoviamo entrambe se non seguite da codice di taglio
-        if "G00 G90 G54" in penultima_riga and ("M3" in ultima_riga or "S" in ultima_riga):
-            righe_elaborate.pop() # Rimuove l'ultima
-            righe_elaborate.pop() # Rimuove la penultima
-        else:
-            break
 
     return "\n".join(righe_elaborate)
 
