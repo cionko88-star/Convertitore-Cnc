@@ -52,6 +52,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     
     n_linea = 2
     modo_movimento_corrente = None
+    ultimo_modo_emesso = None  # Gestione modale G00/G01
     header_iniziale_inserito = False
     in_ciclo_foratura = False
     utensile_corrente = None
@@ -106,6 +107,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
             n_linea += 2
             header_iniziale_inserito = True
+            ultimo_modo_emesso = "G00"
             continue
 
         if re.search(r'\bG49\b', clean, re.IGNORECASE):
@@ -131,6 +133,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             
             righe_elaborate.append(f"N{n_linea} G00 G90 G54")
             n_linea += 2
+            ultimo_modo_emesso = "G00"
             
             s_val = "S4400"
             m_s = re.search(r'S(\d+)', clean, re.IGNORECASE)
@@ -188,10 +191,17 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             clean = f"G99 {cmd_g} {resto}"
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
+            
+            if i < len(righe_greffe):
+                prox_riga = righe_greffe[i].strip()
+                prox_clean = re.sub(r'^N\d+\s*', '', prox_riga)
+                if any(k in prox_clean.upper() for k in ['X', 'Y']) and not any(g in prox_clean.upper() for g in ['G80', 'G0', 'G1']):
+                    i += 1
             continue
 
         if clean.startswith("G80"):
             in_ciclo_foratura = False
+            ultimo_modo_emesso = None
 
         if "G41" in clean or "G42" in clean:
             if not any(k in clean for k in ['X', 'Y', 'Z']) and i < len(righe_greffe):
@@ -216,7 +226,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             n_linea += 2
             continue
 
-        # Gestione corretta dello spostamento in rapido sull'ultimo movimento in Z di ogni passata
         is_z_rapido = False
         if ("Z" in clean and not "Z-" in clean and not any(g in clean for g in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3'])) or clean in ["Z3", "Z100"]:
             is_pre_foratura = False
@@ -237,24 +246,22 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             modo_movimento_corrente = "G00"
             clean = re.sub(r'^G0?1\s*', '', clean)
             clean = re.sub(r'^G0?0?\s*', '', clean)
-            if not clean.startswith("Z"):
-                clean = f"G00 {clean}".strip()
-            else:
-                clean = f"G00 {clean}".strip()
+            clean = f"{clean}".strip()
 
         is_g_speciale = any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"])
         
         if "G02" in clean or "G2" in clean or "G03" in clean or "G3" in clean:
             modo_movimento_corrente = "G01"
+            ultimo_modo_emesso = None
 
         if clean.startswith("G00") or clean.startswith("G0 "):
             modo_movimento_corrente = "G00"
+            clean = re.sub(r'^G0?0?\s*', '', clean)
         elif is_g_speciale:
             pass
         elif clean.startswith("G01") or clean.startswith("G1 "):
             modo_movimento_corrente = "G01"
             clean = re.sub(r'^G0?1\s*', '', clean)
-            clean = f"G01 {clean}"
 
         if any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"]):
             m_i = re.search(r'\bI(-?\d+\.?\d*)', clean)
@@ -285,6 +292,13 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if ha_z and modo_movimento_corrente == "G01" and not in_ciclo_foratura:
             righe_elaborate.append(f"N{n_linea} G61.1")
             n_linea += 2
+
+        # Applicazione modale di G00/G01 se la riga contiene coordinate di movimento
+        ha_coordinate = bool(re.search(r'[XYZ]', clean))
+        if modo_movimento_corrente and ha_coordinate and not any(g in clean for g in ['G80', 'G81', 'G83', 'G84', 'G85', 'G02', 'G2', 'G03', 'G3']):
+            if modo_movimento_corrente != ultimo_modo_emesso:
+                clean = f"{modo_movimento_corrente} {clean}".strip()
+                ultimo_modo_emesso = modo_movimento_corrente
 
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
