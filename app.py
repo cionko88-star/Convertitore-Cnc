@@ -252,7 +252,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         
         if "G02" in clean or "G2" in clean or "G03" in clean or "G3" in clean:
             modo_movimento_corrente = "G01"
-            ultimo_modo_emesso = None
+            # NON resettiamo ultimo_modo_emesso a None, così il G01 resta attivo/modale anche dopo l'arco
 
         if clean.startswith("G00") or clean.startswith("G0 "):
             modo_movimento_corrente = "G00"
