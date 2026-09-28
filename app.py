@@ -202,7 +202,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             
-            # G00 sul primo posizionamento del ciclo di foratura
+            # FORZA ASSOLUTAMENTE IL PRIMO POSIZIONAMENTO IN G00 SUBITO DOPO IL CICLO
             if i < len(righe_greffe):
                 prox_riga = righe_greffe[i].strip()
                 prox_clean = re.sub(r'^N\d+\s*', '', prox_riga)
@@ -212,6 +212,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                     righe_elaborate.append(f"N{n_linea} G00 {prox_clean}")
                     n_linea += 2
                     i += 1
+                    ultimo_modo_emesso = "G00"  # Aggiorna lo stato modale a G00
                     
                     m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', prox_clean)
                     if m_x_upd:
