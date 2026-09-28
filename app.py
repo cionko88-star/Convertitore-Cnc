@@ -25,6 +25,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     
     n_linea = 2
     modo_movimento_corrente = None
+    header_iniziale_inserito = False
     
     i = 0
     while i < len(righe_greffe):
@@ -50,7 +51,15 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not clean:
             continue
             
-        # Salta i comandi G49
+        # Gestione G17 O1 iniziale -> G00 G17 G40 G49 G80 G54 G90
+        if re.search(r'G17\s+O1\b', clean, re.IGNORECASE) or re.search(r'G17\s+1\b', clean, re.IGNORECASE):
+            if not header_iniziale_inserito:
+                righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
+                n_linea += 2
+                header_iniziale_inserito = True
+            continue
+
+        # Salta i comandi G49 isolati
         if re.search(r'\bG49\b', clean, re.IGNORECASE):
             continue
             
@@ -77,7 +86,12 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} T{t_num} M06 M5 M9{desc_str}")
             n_linea += 2
             
-            righe_elaborate.append(f"N{n_linea} G00 G90 G54")
+            # Se non era ancora stato inserito l'header iniziale, lo mettiamo qui o G00 G90 G54 standard
+            if not header_iniziale_inserito:
+                righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
+                header_iniziale_inserito = True
+            else:
+                righe_elaborate.append(f"N{n_linea} G00 G90 G54")
             n_linea += 2
             
             s_val = "S4400"
