@@ -100,6 +100,12 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not clean:
             continue
             
+        # Preserva comandi speciali come G61.1, G17, ecc. se presenti isolati o espliciti
+        if re.search(r'\bG61\.1\b', clean, re.IGNORECASE):
+            righe_elaborate.append(f"N{n_linea} {clean}")
+            n_linea += 2
+            continue
+
         if re.search(r'\bG17\b', clean, re.IGNORECASE) or re.search(r'\bO1\b', clean, re.IGNORECASE) or re.search(r'\b1\b', clean):
             if not header_iniziale_inserito:
                 righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
@@ -235,7 +241,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
         is_z_rapido = False
         if ("Z" in clean and not "Z-" in clean and not any(g in clean for g in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3'])) or clean in ["Z3", "Z100"]:
-            # Verifica se ci troviamo immediatamente prima di un ciclo di foratura
             is_pre_foratura = False
             for look_ahead_idx in range(i, min(i + 3, len(righe_greffe))):
                 if any(g in righe_greffe[look_ahead_idx] for g in ['G81', 'G84']):
@@ -272,7 +277,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
         
-    # Chiusura finale pulita richiesta
+    # Chiusura finale pulita
     descrizione_primo = utensili_info.get(primo_utensile, "")
     if descrizione_primo:
         if re.match(rf'^T\s*{primo_utensile}\b', descrizione_primo, re.IGNORECASE):
