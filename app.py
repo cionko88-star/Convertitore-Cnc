@@ -82,9 +82,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             if "MACCHINA:" in commento.upper():
                 commento = "(MACCHINA: MAZAK)"
 
-            if commento.startswith("("):
-                righe_elaborate.append("")
-            
+            # RIMOSSO: Nessuna riga vuota aggiunta prima dei commenti dell'intestazione
             righe_elaborate.append(commento)
             continue
             
@@ -221,7 +219,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             
-            # MEMORIZZIAMO LE COORDINATE APPENA EMESSE PER EVITARE IL DOPPIONE SUBITO DOPO IL G81
             ultimo_x_emesso = x_corrente
             ultimo_y_emesso = y_corrente
             continue
