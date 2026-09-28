@@ -96,6 +96,11 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             continue
 
         if "M30" in clean.upper():
+            # Inserisce T1 M06 (con la sua descrizione) prima di M30 come richiesto
+            desc_t1 = utensili_info.get("1", "")
+            desc_str_t1 = f" ( T1 - {desc_t1} )" if desc_t1 else " ( T1 )"
+            righe_elaborate.append(f"N{n_linea} T1 M06{desc_str_t1}")
+            n_linea += 2
             righe_elaborate.append(f"N{n_linea} M30")
             break
 
@@ -288,7 +293,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} G61.1")
             n_linea += 2
 
-        # Applicazione modale di G00/G01 se la riga contiene coordinate di movimento
         ha_coordinate = bool(re.search(r'[XYZ]', clean))
         if modo_movimento_corrente and ha_coordinate and not any(g in clean for g in ['G80', 'G81', 'G83', 'G84', 'G85', 'G02', 'G2', 'G03', 'G3']):
             if modo_movimento_corrente != ultimo_modo_emesso:
