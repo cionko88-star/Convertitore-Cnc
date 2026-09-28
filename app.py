@@ -202,7 +202,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             
-            # AGGIUNTO G00 SUL PRIMO POSIZIONAMENTO DEL CICLO DI FORATURA
+            # G00 sul primo posizionamento del ciclo di foratura
             if i < len(righe_greffe):
                 prox_riga = righe_greffe[i].strip()
                 prox_clean = re.sub(r'^N\d+\s*', '', prox_riga)
@@ -276,12 +276,12 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             modo_movimento_corrente = "G00"
             clean = re.sub(r'^G0?0?\s*', '', clean)
         elif is_g_speciale:
-            modo_movimento_corrente = "G01"  # DOPO G02/G03 IMPOSTA IL MODO CORRENTE SU G01
+            pass  # Gestito sotto per il calcolo e impostazione del G01 successivo
         elif clean.startswith("G01") or clean.startswith("G1 "):
             modo_movimento_corrente = "G01"
             clean = re.sub(r'^G0?1\s*', '', clean)
 
-        if any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"]):
+        if is_g_speciale:
             m_i = re.search(r'\bI(-?\d+\.?\d*)', clean)
             m_j = re.search(r'\bJ(-?\d+\.?\d*)', clean)
             if m_i or m_j:
@@ -298,6 +298,9 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                     clean = re.sub(r'\bJ-?\d+\.?\d*', f'J{j_inc:g}', clean)
                 else:
                     clean += f" J{j_inc:g}"
+            
+            # REGOLA: DOPO G02/G03 IL MODO CORRENTE TORNA OBBLIGATORIAMENTE A G01
+            modo_movimento_corrente = "G01"
 
         m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', clean)
         if m_x_upd:
