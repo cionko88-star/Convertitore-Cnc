@@ -179,7 +179,8 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
             clean = "Z3"
 
-        if clean.startswith("G81") or clean.startswith("G84"):
+        # Gestione cicli di foratura G81 / G83 / G84 / G85 e scarto della prima riga di coordinate successiva
+        if any(clean.startswith(g) for g in ["G81", "G83", "G84", "G85"]):
             in_ciclo_foratura = True
             parts = clean.split()
             cmd_g = parts[0]
@@ -188,6 +189,13 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             clean = f"G99 {cmd_g} {resto}"
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
+            
+            # Salta la riga di posizionamento iniziale subito dopo il ciclo se contiene coordinate X o Y
+            if i < len(righe_greffe):
+                prox_riga = righe_greffe[i].strip()
+                prox_clean = re.sub(r'^N\d+\s*', '', prox_riga)
+                if any(k in prox_clean.upper() for k in ['X', 'Y']) and not any(g in prox_clean.upper() for g in ['G80', 'G0', 'G1']):
+                    i += 1
             continue
 
         if clean.startswith("G80"):
@@ -220,7 +228,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if ("Z" in clean and not "Z-" in clean and not any(g in clean for g in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3'])) or clean in ["Z3", "Z100"]:
             is_pre_foratura = False
             for look_ahead_idx in range(i, min(i + 3, len(righe_greffe))):
-                if any(g in righe_greffe[look_ahead_idx] for g in ['G81', 'G84']):
+                if any(g in righe_greffe[look_ahead_idx] for g in ['G81', 'G83', 'G84', 'G85']):
                     is_pre_foratura = True
                     break
             if not is_pre_foratura:
