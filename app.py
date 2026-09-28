@@ -57,6 +57,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     in_ciclo_foratura = False
     utensile_corrente = None
     inserito_primo_g64_utensile = False
+    primo_movimento_utensile_fatto = False  # Traccia se abbiamo già fatto il primo posizionamento X/Y dell'utensile corrente
     
     x_corrente = 0.0
     y_corrente = 0.0
@@ -78,11 +79,10 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 commento += ')'
             
             if "DATA:" in commento.upper():
-                commento = "(Data: 07-08-18 CHRISTIAN ---- 06-05-2025 CONVERTITO PER MAZAK)"
+                commento = "(Data: 07-08-18 CHRISTIAN)"
             if "MACCHINA:" in commento.upper():
-                commento = "(MACCHINA: MAZAK)"
+                commento = "(MACCHINA: PARPAS_PHS812)"
 
-            # Nessuna riga vuota aggiunta prima dei commenti dell'intestazione
             righe_elaborate.append(commento)
             continue
             
@@ -110,6 +110,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         match_cambio = re.search(r'\bT(\d+)\s+M0?6\b', clean, re.IGNORECASE)
         if match_cambio:
             t_num = match_cambio.group(1)
+            primo_movimento_utensile_fatto = False  # Reset flag per il nuovo utensile
             
             is_cambio_finale = False
             for look_ahead_idx in range(max(0, i-2), min(len(righe_greffe), i + 2)):
@@ -208,6 +209,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             clean = re.sub(r'^G0?1\s*', '', clean)
             clean = f"G00 {clean}".strip()
             ultimo_modo_emesso = "G00"
+            primo_movimento_utensile_fatto = True
             
             m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', clean)
             if m_x_upd:
@@ -310,9 +312,10 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         elif clean.startswith("G01") or clean.startswith("G1 "):
             modo_movimento_corrente = "G01"
             clean = re.sub(r'^G0?1\s*', '', clean)
-        elif not modo_movimento_corrente and ha_xy and not in_ciclo_foratura:
-            # Assicura che il primo posizionamento X/Y fuori dai cicli sia sempre G00
+        elif not primo_movimento_utensile_fatto and ha_xy and not in_ciclo_foratura:
+            # FORZA IL G00 AL PRIMO MOVIMENTO X Y DI OGNI UTENSILE
             modo_movimento_corrente = "G00"
+            primo_movimento_utensile_fatto = True
 
         if is_g_speciale:
             m_i = re.search(r'\bI(-?\d+\.?\d*)', clean)
@@ -337,9 +340,13 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', clean)
         if m_x_upd:
             x_corrente = float(m_x_upd.group(1))
+            if not primo_movimento_utensile_fatto and ha_xy and not in_ciclo_foratura:
+                primo_movimento_utensile_fatto = True
         m_y_upd = re.search(r'\bY(-?\d+\.?\d*)', clean)
         if m_y_upd:
             y_corrente = float(m_y_upd.group(1))
+            if not primo_movimento_utensile_fatto and ha_xy and not in_ciclo_foratura:
+                primo_movimento_utensile_fatto = True
 
         ha_z = bool(re.search(r'\bZ-?\d+', clean))
         if ha_z and modo_movimento_corrente == "G01" and not in_ciclo_foratura:
