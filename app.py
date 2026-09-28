@@ -97,10 +97,12 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             continue
 
         if "M30" in clean.upper():
-            # Inserimento del richiamo del primo utensile prima di M30
+            # Inserimento del richiamo dell'utensile finale (es. T1 M06) prima di M30
             if t_sequenza_ordinata:
                 primo_t = t_sequenza_ordinata[0]
-                righe_elaborate.append(f"N{n_linea} T{primo_t} M51")
+                descrizione = utensili_info.get(primo_t, "")
+                desc_str = f" ( T{primo_t} - {descrizione} )" if descrizione else f" ( T{primo_t} )"
+                righe_elaborate.append(f"N{n_linea} T{primo_t} M06 M5 M9{desc_str}")
                 n_linea += 2
             righe_elaborate.append(f"N{n_linea} M30")
             break
@@ -120,14 +122,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             utensile_corrente = t_num
             inserito_primo_g64_utensile = False
             descrizione = utensili_info.get(t_num, "")
-
-            prossimo_t = ""
-            try:
-                current_idx_in_seq = t_sequenza_ordinata.index(t_num)
-                if current_idx_in_seq + 1 < len(t_sequenza_ordinata):
-                    prossimo_t = t_sequenza_ordinata[current_idx_in_seq + 1]
-            except ValueError:
-                pass
 
             if descrizione:
                 if re.match(rf'^T\s*{t_num}\b', descrizione, re.IGNORECASE):
@@ -153,10 +147,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                     s_val = f"S{m_s_next.group(1)}"
                     i += 1
 
-            if prossimo_t:
-                righe_elaborate.append(f"N{n_linea} {s_val} M3 T{prossimo_t} M51")
-            else:
-                righe_elaborate.append(f"N{n_linea} {s_val} M3")
+            righe_elaborate.append(f"N{n_linea} {s_val} M3")
             n_linea += 2
             continue
 
@@ -304,30 +295,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
-
-    # Post-elaborazione: rimozione blocco utensile finale non seguito da lavorazioni prima di M30
-    idx_m30 = -1
-    for idx, riga in enumerate(righe_elaborate):
-        if "M30" in riga:
-            idx_m30 = idx
-            break
-            
-    if idx_m30 > 0:
-        j = idx_m30 - 1
-        while j >= 0:
-            if "M06" in righe_elaborate[j]:
-                ha_movimenti = False
-                for k in range(j + 1, idx_m30):
-                    r_test = righe_elaborate[k]
-                    if any(kwd in r_test for kwd in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3', 'X', 'Y', 'Z-']):
-                        ha_movimenti = True
-                        break
-                if not ha_movimenti:
-                    m30_riga = righe_elaborate[idx_m30]
-                    righe_elaborate = righe_elaborate[:j]
-                    righe_elaborate.append(m30_riga)
-                break
-            j -= 1
 
     return "\n".join(righe_elaborate)
 
