@@ -113,7 +113,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if match_cambio:
             t_num = match_cambio.group(1)
             
-            # Controllo se è un cambio utensile isolato finale prima di M30
             is_cambio_finale = False
             for look_ahead_idx in range(max(0, i-2), min(len(righe_greffe), i + 2)):
                 if "M30" in righe_greffe[look_ahead_idx].upper():
@@ -203,11 +202,23 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             
+            # Controlla se la riga successiva contiene coordinate X/Y e inserisce G00
             if i < len(righe_greffe):
                 prox_riga = righe_greffe[i].strip()
                 prox_clean = re.sub(r'^N\d+\s*', '', prox_riga)
+                prox_clean = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', prox_clean)
+                prox_clean = re.sub(r'\s+', ' ', prox_clean).strip()
                 if any(k in prox_clean.upper() for k in ['X', 'Y']) and not any(g in prox_clean.upper() for g in ['G80', 'G0', 'G1']):
+                    righe_elaborate.append(f"N{n_linea + 2} G00 {prox_clean}")
+                    n_linea += 4
                     i += 1
+                    
+                    m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', prox_clean)
+                    if m_x_upd:
+                        x_corrente = float(m_x_upd.group(1))
+                    m_y_upd = re.search(r'\bY(-?\d+\.?\d*)', prox_clean)
+                    if m_y_upd:
+                        y_corrente = float(m_y_upd.group(1))
             continue
 
         if clean.startswith("G80"):
