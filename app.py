@@ -194,15 +194,8 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
         if any(clean.startswith(g) for g in ["G81", "G83", "G84", "G85"]):
             in_ciclo_foratura = True
-            parts = clean.split()
-            cmd_g = parts[0]
-            resto = " ".join(parts[1:])
-            resto = re.sub(r'J\d+', 'R3', resto)
-            clean = f"G99 {cmd_g} {resto}"
-            righe_elaborate.append(f"N{n_linea} {clean}")
-            n_linea += 2
             
-            # FORZA ASSOLUTAMENTE IL PRIMO POSIZIONAMENTO IN G00 SUBITO DOPO IL CICLO
+            # 1. PRIMA DEL CICLO: Se la riga successiva contiene coordinate X/Y, stampale in G00 PRIMA di richiamare il ciclo G81/G83
             if i < len(righe_greffe):
                 prox_riga = righe_greffe[i].strip()
                 prox_clean = re.sub(r'^N\d+\s*', '', prox_riga)
@@ -212,7 +205,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                     righe_elaborate.append(f"N{n_linea} G00 {prox_clean}")
                     n_linea += 2
                     i += 1
-                    ultimo_modo_emesso = "G00"  # Aggiorna lo stato modale a G00
+                    ultimo_modo_emesso = "G00"
                     
                     m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', prox_clean)
                     if m_x_upd:
@@ -220,6 +213,15 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                     m_y_upd = re.search(r'\bY(-?\d+\.?\d*)', prox_clean)
                     if m_y_upd:
                         y_corrente = float(m_y_upd.group(1))
+
+            # 2. ORA STAMPIAMO IL CICLO DI FORATURA CON G99
+            parts = clean.split()
+            cmd_g = parts[0]
+            resto = " ".join(parts[1:])
+            resto = re.sub(r'J\d+', 'R3', resto)
+            clean = f"G99 {cmd_g} {resto}"
+            righe_elaborate.append(f"N{n_linea} {clean}")
+            n_linea += 2
             continue
 
         if clean.startswith("G80"):
