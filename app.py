@@ -96,10 +96,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             continue
 
         if "M30" in clean.upper():
-            if len(t_sequenza_ordinata) > 0:
-                primo_t = t_sequenza_ordinata[0]
-                righe_elaborate.append(f"N{n_linea} T{primo_t} M06 M5 M9")
-                n_linea += 2
             righe_elaborate.append(f"N{n_linea} M30")
             break
 
@@ -252,7 +248,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         
         if "G02" in clean or "G2" in clean or "G03" in clean or "G3" in clean:
             modo_movimento_corrente = "G01"
-            # NON resettiamo ultimo_modo_emesso a None, così il G01 resta attivo/modale anche dopo l'arco
 
         if clean.startswith("G00") or clean.startswith("G0 "):
             modo_movimento_corrente = "G00"
