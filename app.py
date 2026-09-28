@@ -179,36 +179,17 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
             clean = "Z3"
 
-        # Gestione cicli di foratura G81 / G83 / G84 / G85
+        # Cicli di foratura G81 / G83 / G84 / G85 e rimozione del primo posizionamento ridondante
         if any(clean.startswith(g) for g in ["G81", "G83", "G84", "G85"]):
             in_ciclo_foratura = True
             parts = clean.split()
             cmd_g = parts[0]
             resto = " ".join(parts[1:])
-            
-            # Se è maschiatura G84, il passo non è 1000 ma 1
-            if cmd_g == "G84":
-                m_j = re.search(r'J(\d+)', resto)
-                if m_j:
-                    val_j = int(m_j.group(1))
-                    val_passo = val_j / 1000.0 if val_j > 10 else val_j
-                    resto = re.sub(r'J\d+', '', resto)
-                    resto = f"{resto} F{val_passo:g}"
-                else:
-                    m_f = re.search(r'F(\d+)', resto)
-                    if m_f:
-                        val_f = int(m_f.group(1))
-                        if val_f > 10:
-                            val_passo = val_f / 1000.0
-                            resto = re.sub(r'F\d+', f'F{val_passo:g}', resto)
-            else:
-                resto = re.sub(r'J\d+', 'R3', resto)
-
+            resto = re.sub(r'J\d+', 'R3', resto)
             clean = f"G99 {cmd_g} {resto}"
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             
-            # Salta la riga di posizionamento iniziale subito dopo il ciclo se contiene coordinate X o Y
             if i < len(righe_greffe):
                 prox_riga = righe_greffe[i].strip()
                 prox_clean = re.sub(r'^N\d+\s*', '', prox_riga)
@@ -253,22 +234,17 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 is_z_rapido = True
 
         if is_z_rapido and not in_ciclo_foratura:
-            if modo_movimento_corrente != "G00":
-                if inserito_primo_g64_utensile:
-                    righe_elaborate.append(f"N{n_linea} G64")
-                    n_linea += 2
-                else:
-                    inserito_primo_g64_utensile = True
-                modo_movimento_corrente = "G00"
+            if inserito_primo_g64_utensile:
+                righe_elaborate.append(f"N{n_linea} G64")
+                n_linea += 2
+            else:
+                inserito_primo_g64_utensile = True
             
+            modo_movimento_corrente = "G00"
             clean = re.sub(r'^G0?1\s*', '', clean)
             clean = re.sub(r'^G0?0?\s*', '', clean)
             if not clean.startswith("Z"):
                 clean = f"G00 {clean}".strip()
-
-        # Nei cicli di foratura, rimuove G00 dal primo movimento in Z
-        if in_ciclo_foratura and "Z" in clean:
-            clean = re.sub(r'\bG0?0?\s*', '', clean)
 
         is_g_speciale = any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"])
         
