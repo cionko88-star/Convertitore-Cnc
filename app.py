@@ -69,6 +69,10 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     utensile_corrente = None
     inserito_primo_g64_utensile = False
     
+    # Variabili per tracciare la posizione corrente (per il calcolo incrementale di I e J)
+    x_corrente = 0.0
+    y_corrente = 0.0
+    
     i = 0
     while i < len(righe_greffe):
         riga_grezza = righe_greffe[i].strip()
@@ -272,6 +276,34 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         else:
             if modo_movimento_corrente == "G01" and any(k in clean for k in ['X', 'Y', 'Z']):
                 pass
+
+        # Conversione di I e J da assoluto (Selca) a incrementale (ISO) per G02 / G03
+        if any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"]):
+            m_i = re.search(r'\bI(-?\d+\.?\d*)', clean)
+            m_j = re.search(r'\bJ(-?\d+\.?\d*)', clean)
+            if m_i or m_j:
+                i_abs = float(m_i.group(1)) if m_i else x_corrente
+                j_abs = float(m_j.group(1)) if m_j else y_corrente
+                i_inc = i_abs - x_corrente
+                j_inc = j_abs - y_corrente
+                
+                # Sostituisci o aggiungi I e J incrementali formattati puliti
+                if m_i:
+                    clean = re.sub(r'\bI-?\d+\.?\d*', f'I{i_inc:g}', clean)
+                else:
+                    clean += f" I{i_inc:g}"
+                if m_j:
+                    clean = re.sub(r'\bJ-?\d+\.?\d*', f'J{j_inc:g}', clean)
+                else:
+                    clean += f" J{j_inc:g}"
+
+        # Aggiornamento coordinate correnti X e Y
+        m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', clean)
+        if m_x_upd:
+            x_corrente = float(m_x_upd.group(1))
+        m_y_upd = re.search(r'\bY(-?\d+\.?\d*)', clean)
+        if m_y_upd:
+            y_corrente = float(m_y_upd.group(1))
 
         ha_z = bool(re.search(r'\bZ-?\d+', clean))
         if ha_z and modo_movimento_corrente == "G01" and not in_ciclo_foratura:
