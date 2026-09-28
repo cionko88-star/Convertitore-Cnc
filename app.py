@@ -96,11 +96,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             continue
 
         if "M30" in clean.upper():
-            # Inserisce T1 M06 (con la sua descrizione) prima di M30 come richiesto
-            desc_t1 = utensili_info.get("1", "")
-            desc_str_t1 = f" ( T1 - {desc_t1} )" if desc_t1 else " ( T1 )"
-            righe_elaborate.append(f"N{n_linea} T1 M06{desc_str_t1}")
-            n_linea += 2
             righe_elaborate.append(f"N{n_linea} M30")
             break
 
@@ -117,6 +112,22 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         match_cambio = re.search(r'\bT(\d+)\s+M0?6\b', clean, re.IGNORECASE)
         if match_cambio:
             t_num = match_cambio.group(1)
+            
+            # Controllo se è un cambio utensile isolato finale (es. "T1 M6" senza parametri di velocità o coordinate successive immediate)
+            is_cambio_finale = False
+            # Verifichiamo se nelle righe successive c'è M30 a breve distanza senza lavorazioni in mezzo
+            for look_ahead_idx in range(max(0, i-2), min(len(righe_greffe), i + 2)):
+                if "M30" in righe_greffe[look_ahead_idx].upper():
+                    is_cambio_finale = True
+                    break
+
+            if is_cambio_finale:
+                desc_t = utensili_info.get(t_num, "")
+                desc_str_t = f" ( T{t_num} - {desc_t} )" if desc_t else f" ( T{t_num} )"
+                righe_elaborate.append(f"N{n_linea} T{t_num} M06{desc_str_t}")
+                n_linea += 2
+                continue
+
             utensile_corrente = t_num
             inserito_primo_g64_utensile = False
             descrizione = utensili_info.get(t_num, "")
@@ -409,5 +420,5 @@ def scarica():
     )
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.0.get("PORT", 5000)) if False else int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
