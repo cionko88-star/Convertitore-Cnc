@@ -192,29 +192,38 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
             clean = "Z3"
 
+        # Intercettazione preventivo del primo movimento X/Y prima di un ciclo di foratura
+        ha_xy = bool(re.search(r'[XY]', clean))
+        is_pre_ciclo = False
+        if ha_xy and not in_ciclo_foratura:
+            for look_ahead_idx in range(i, min(i + 4, len(righe_greffe))):
+                riga_futura = righe_greffe[look_ahead_idx].upper()
+                if any(g in riga_futura for g in ['G81', 'G83', 'G84', 'G85']):
+                    is_pre_ciclo = True
+                    break
+                if 'G80' in riga_futura or 'M30' in riga_futura:
+                    break
+
+        if is_pre_ciclo:
+            modo_movimento_corrente = "G00"
+            clean = re.sub(r'^G0?0?\s*', '', clean)
+            clean = re.sub(r'^G0?1\s*', '', clean)
+            clean = f"G00 {clean}".strip()
+            ultimo_modo_emesso = "G00"
+            
+            m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', clean)
+            if m_x_upd:
+                x_corrente = float(m_x_upd.group(1))
+            m_y_upd = re.search(r'\bY(-?\d+\.?\d*)', clean)
+            if m_y_upd:
+                y_corrente = float(m_y_upd.group(1))
+            
+            righe_elaborate.append(f"N{n_linea} {clean}")
+            n_linea += 2
+            continue
+
         if any(clean.startswith(g) for g in ["G81", "G83", "G84", "G85"]):
             in_ciclo_foratura = True
-            
-            # 1. PRIMA DEL CICLO: Se la riga successiva contiene coordinate X/Y, stampale in G00 PRIMA e CONSUMA la riga
-            if i < len(righe_greffe):
-                prox_riga = righe_greffe[i].strip()
-                prox_clean = re.sub(r'^N\d+\s*', '', prox_riga)
-                prox_clean = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', prox_clean)
-                prox_clean = re.sub(r'\s+', ' ', prox_clean).strip()
-                if any(k in prox_clean.upper() for k in ['X', 'Y']) and not any(g in prox_clean.upper() for g in ['G80', 'G0', 'G1']):
-                    righe_elaborate.append(f"N{n_linea} G00 {prox_clean}")
-                    n_linea += 2
-                    i += 1  # SALTIAMO LA RIGA SUCCESSIVA PER EVITARE DUPLICAZIONI
-                    ultimo_modo_emesso = "G00"
-                    
-                    m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', prox_clean)
-                    if m_x_upd:
-                        x_corrente = float(m_x_upd.group(1))
-                    m_y_upd = re.search(r'\bY(-?\d+\.?\d*)', prox_clean)
-                    if m_y_upd:
-                        y_corrente = float(m_y_upd.group(1))
-
-            # 2. ORA STAMPIAMO IL CICLO DI FORATURA CON G99
             parts = clean.split()
             cmd_g = parts[0]
             resto = " ".join(parts[1:])
@@ -302,7 +311,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 else:
                     clean += f" J{j_inc:g}"
             
-            # Forza l'emissione del G01 nel blocco successivo azzerando l'ultimo modo emesso
             ultimo_modo_emesso = "G02_OR_G03"
 
         m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', clean)
