@@ -100,9 +100,9 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not clean:
             continue
             
-        # Preserva comandi speciali come G61.1, G17, ecc. se presenti isolati o espliciti
+        # Gestione esplicita e prioritaria per G61.1 ovunque si trovi
         if re.search(r'\bG61\.1\b', clean, re.IGNORECASE):
-            righe_elaborate.append(f"N{n_linea} {clean}")
+            righe_elaborate.append(f"N{n_linea} {clean.upper()}")
             n_linea += 2
             continue
 
