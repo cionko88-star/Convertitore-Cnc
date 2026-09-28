@@ -57,7 +57,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     in_ciclo_foratura = False
     utensile_corrente = None
     inserito_primo_g64_utensile = False
-    primo_movimento_utensile_fatto = False  # Traccia se abbiamo già fatto il primo posizionamento X/Y dell'utensile corrente
+    forza_g00_successivo = False  # Flag cruciale per forzare il G00 dopo S... M3
     
     x_corrente = 0.0
     y_corrente = 0.0
@@ -110,7 +110,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         match_cambio = re.search(r'\bT(\d+)\s+M0?6\b', clean, re.IGNORECASE)
         if match_cambio:
             t_num = match_cambio.group(1)
-            primo_movimento_utensile_fatto = False  # Reset flag per il nuovo utensile
+            forza_g00_successivo = False
             
             is_cambio_finale = False
             for look_ahead_idx in range(max(0, i-2), min(len(righe_greffe), i + 2)):
@@ -170,11 +170,15 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
             righe_elaborate.append(f"N{n_linea} {s_val} M3 T{prox_t} {codice_acc}")
             n_linea += 2
+            
+            # ATTIVIAMO IL FLAG: IL PROSSIMO MOVIMENTO X Y DEVE ESSERE IN G00!
+            forza_g00_successivo = True
             continue
 
         if clean.startswith("S") and "M3" in clean:
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
+            forza_g00_successivo = True
             continue
 
         if '[' in clean or ']' in clean:
@@ -203,13 +207,13 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 if 'G80' in riga_futura or 'M30' in riga_futura:
                     break
 
-        if is_pre_ciclo:
+        if is_pre_ciclo or forza_g00_successivo:
             modo_movimento_corrente = "G00"
             clean = re.sub(r'^G0?0?\s*', '', clean)
             clean = re.sub(r'^G0?1\s*', '', clean)
             clean = f"G00 {clean}".strip()
             ultimo_modo_emesso = "G00"
-            primo_movimento_utensile_fatto = True
+            forza_g00_successivo = False  # Consumiamo il flag
             
             m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', clean)
             if m_x_upd:
@@ -235,7 +239,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             
-            # Scarto riga doppione coordinate subito dopo il G81
             if i < len(righe_greffe):
                 prox_riga_chk = righe_greffe[i].strip()
                 prox_clean_chk = re.sub(r'^N\d+\s*', '', prox_riga_chk)
@@ -312,10 +315,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         elif clean.startswith("G01") or clean.startswith("G1 "):
             modo_movimento_corrente = "G01"
             clean = re.sub(r'^G0?1\s*', '', clean)
-        elif not primo_movimento_utensile_fatto and ha_xy and not in_ciclo_foratura:
-            # FORZA IL G00 AL PRIMO MOVIMENTO X Y DI OGNI UTENSILE
-            modo_movimento_corrente = "G00"
-            primo_movimento_utensile_fatto = True
 
         if is_g_speciale:
             m_i = re.search(r'\bI(-?\d+\.?\d*)', clean)
@@ -340,13 +339,9 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', clean)
         if m_x_upd:
             x_corrente = float(m_x_upd.group(1))
-            if not primo_movimento_utensile_fatto and ha_xy and not in_ciclo_foratura:
-                primo_movimento_utensile_fatto = True
         m_y_upd = re.search(r'\bY(-?\d+\.?\d*)', clean)
         if m_y_upd:
             y_corrente = float(m_y_upd.group(1))
-            if not primo_movimento_utensile_fatto and ha_xy and not in_ciclo_foratura:
-                primo_movimento_utensile_fatto = True
 
         ha_z = bool(re.search(r'\bZ-?\d+', clean))
         if ha_z and modo_movimento_corrente == "G01" and not in_ciclo_foratura:
