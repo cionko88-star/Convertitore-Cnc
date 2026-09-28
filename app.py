@@ -113,9 +113,8 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if match_cambio:
             t_num = match_cambio.group(1)
             
-            # Controllo se è un cambio utensile isolato finale (es. "T1 M6" senza parametri di velocità o coordinate successive immediate)
+            # Controllo se è un cambio utensile isolato finale prima di M30
             is_cambio_finale = False
-            # Verifichiamo se nelle righe successive c'è M30 a breve distanza senza lavorazioni in mezzo
             for look_ahead_idx in range(max(0, i-2), min(len(righe_greffe), i + 2)):
                 if "M30" in righe_greffe[look_ahead_idx].upper():
                     is_cambio_finale = True
@@ -420,5 +419,5 @@ def scarica():
     )
 
 if __name__ == '__main__':
-    port = int(os.environ.0.get("PORT", 5000)) if False else int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
