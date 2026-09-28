@@ -47,6 +47,10 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not clean:
             continue
             
+        # Salta i comandi G49 (rimozione compensazione utensile come richiesto)
+        if re.search(r'\bG49\b', clean, re.IGNORECASE):
+            continue
+            
         # Intercetta il cambio utensile
         match_cambio = re.search(r'T(\d+)\s+M6\b', clean, re.IGNORECASE)
         if match_cambio:
@@ -69,7 +73,12 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             except ValueError:
                 pass
 
-            desc_str = f" ( T{t_num} - {descrizione} )" if descrizione else f" ( T{t_num} )"
+            # Ripristinata correttamente la stampa del commento con il numero utensile anche se manca la descrizione
+            if descrizione:
+                desc_str = f" ( T{t_num} - {descrizione} )"
+            else:
+                desc_str = f" ( T{t_num} )"
+
             righe_elaborate.append(f"N{n_linea} T{t_num} M06 M5 M9{desc_str}")
             n_linea += 2
             
@@ -121,7 +130,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             resto = re.sub(r'J\d+', 'R3', resto)
             clean = f"G99 {cmd_g} {resto}"
 
-        # Riconoscimento se è un movimento di lavoro (es. Z- con F o G01 esplicito)
+        # Riconoscimento se è un movimento di lavoro
         is_lavoro = clean.startswith("G01") or clean.startswith("G1 ") or ("Z-" in clean and "F" in clean) or (modo_movimento_corrente == "G01" and ("Z-" in clean or "X" in clean or "Y" in clean))
         is_z_rapido = False
 
@@ -131,10 +140,9 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 is_z_rapido = True
         elif is_lavoro:
             if modo_movimento_corrente != "G01":
-                # Se l'ultimo comando inserito era G64, lo rimuoviamo prima di mettere G61.1
                 if righe_elaborate and righe_elaborate[-1].endswith("G64"):
                     righe_elaborate.pop()
-                    n_linea -= 2  # Riallinea il contatore riga
+                    n_linea -= 2  
                 
                 righe_elaborate.append(f"N{n_linea} G61.1")
                 n_linea += 2
@@ -153,7 +161,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
         
-        # Aggiunta automatica di G64 subito dopo un movimento rapido in Z positivo/alto
         if is_z_rapido or (modo_movimento_corrente == "G00" and "Z" in clean and not "Z-" in clean):
             righe_elaborate.append(f"N{n_linea} G64")
             n_linea += 2
