@@ -8,11 +8,11 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     righe_greffe = testo_selca.strip().split('\n')
     righe_elaborate = []
     
-    # 1. Parsing preliminare per trovare le descrizioni degli utensili (supporta M6 e M06)
+    # 1. Parsing preliminare per trovare le descrizioni degli utensili
     utensili_info = {} 
     for idx, riga in enumerate(righe_greffe):
         riga_clean = riga.strip()
-        match_t = re.search(r'\bT(\d+)\s+M0?6\b', riga_clean, re.IGNORECASE)
+        match_t = re.search(r'\bT(\d+)\b', riga_clean, re.IGNORECASE)
         if match_t:
             t_num = match_t.group(1)
             descrizione = ""
@@ -39,28 +39,16 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                     descrizione = match_taglio.group(1).strip()
                 descrizione = re.sub(r'\s*-\s*$', '', descrizione).strip()
 
-            utensili_info[t_num] = descrizione
+            if t_num not in utensili_info or not utensili_info[t_num]:
+                utensili_info[t_num] = descrizione
 
-    if "4" not in utensili_info:
-        for riga in righe_greffe:
-            if "T4" in riga and ("D." in riga or "PUNTA" in riga):
-                m_desc = re.search(r'[\(\[]\s*(.*?)\s*[\)\]]', riga)
-                if m_desc:
-                    utensili_info["4"] = m_desc.group(1).strip()
-                    break
-        if "4" not in utensili_info:
-            utensili_info["4"] = "PUNTA FORATA MET. DURO"
-
+    # Estrazione sequenza ordinata di tutti gli utensili menzionati nel programma in ordine di apparizione
     t_sequenza_ordinata = []
     for riga in righe_greffe:
-        m_t = re.search(r'\bT(\d+)\s+M0?6\b', riga, re.IGNORECASE)
-        if m_t:
-            t_num = m_t.group(1)
+        matches_t = re.findall(r'\bT\s*(\d+)\b', riga, re.IGNORECASE)
+        for t_num in matches_t:
             if t_num not in t_sequenza_ordinata:
                 t_sequenza_ordinata.append(t_num)
-        elif "T4" in riga and "M51" in riga and "4" not in t_sequenza_ordinata:
-            if "4" not in t_sequenza_ordinata:
-                t_sequenza_ordinata.append("4")
     
     n_linea = 2
     modo_movimento_corrente = None
@@ -109,7 +97,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             continue
 
         if "M30" in clean.upper():
-            # Inserimento del richiamo del primo utensile prima di M30, se disponibile
+            # Inserimento del richiamo del primo utensile prima di M30
             if t_sequenza_ordinata:
                 primo_t = t_sequenza_ordinata[0]
                 righe_elaborate.append(f"N{n_linea} T{primo_t} M51")
