@@ -8,7 +8,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     righe_greffe = testo_selca.strip().split('\n')
     righe_elaborate = []
     
-    # 1. Parsing preliminare per trovare le descrizioni degli utensili fermandosi al diametro (- D.xx)
+    # 1. Parsing preliminare per trovare le descrizioni degli utensili
     utensili_info = {} 
     for idx, riga in enumerate(righe_greffe):
         riga_clean = riga.strip()
@@ -41,7 +41,17 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
             utensili_info[t_num] = descrizione
 
-    # Estrae la sequenza ordinata di tutti gli utensili unici incontrati nel programma
+    # Se T4 non ha M6 esplicito ma è stato definito nei commenti in testa, recuperiamo la descrizione
+    if "4" not in utensili_info:
+        for riga in righe_greffe:
+            if "T4" in riga and ("D." in riga or "PUNTA" in riga):
+                m_desc = re.search(r'[\(\[]\s*(.*?)\s*[\)\]]', riga)
+                if m_desc:
+                    utensili_info["4"] = m_desc.group(1).strip()
+                    break
+        if "4" not in utensili_info:
+            utensili_info["4"] = "PUNTA FORATA MET. DURO"
+
     t_sequenza_ordinata = []
     for riga in righe_greffe:
         m_t = re.search(r'\bT(\d+)\s+M6\b', riga, re.IGNORECASE)
@@ -49,12 +59,15 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             t_num = m_t.group(1)
             if t_num not in t_sequenza_ordinata:
                 t_sequenza_ordinata.append(t_num)
+        elif "T4" in riga and "M51" in riga and "4" not in t_sequenza_ordinata:
+            if "4" not in t_sequenza_ordinata:
+                t_sequenza_ordinata.append("4")
 
-    primo_utensile = t_sequenza_ordinata[0] if t_sequenza_ordinata else "1"
-    
     n_linea = 2
     modo_movimento_corrente = None
     header_iniziale_inserito = False
+    in_ciclo_foratura = False
+    utensile_corrente = None
     
     i = 0
     while i < len(righe_greffe):
@@ -72,6 +85,15 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             if not commento.endswith(')'):
                 commento += ')'
             righe_elaborate.append(commento)
+            
+            # Intercetta se il commento introduce i prefori per inserire T4 se non ancora fatto
+            if "PREFORI PER M6" in commento.upper() and utensile_corrente != "4":
+                utensile_corrente = "4"
+                descrizione = utensili_info.get("4", "PUNTA FORATA")
+                righe_elaborate.append(f"N{n_linea} T4 M06 M5 M9 ( T4 - {descrizione} )")
+                n_linea += 2
+                righe_elaborate.append(f"N{n_linea} G00 G90 G54")
+                n_linea += 2
             continue
             
         clean = re.sub(r'^N\d+\s*', '', riga_grezza)
@@ -88,10 +110,11 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if re.search(r'\bG49\b', clean, re.IGNORECASE):
             continue
             
-        # Intercetta il cambio utensile
+        # Intercetta il cambio utensile standard (Tn M6)
         match_cambio = re.search(r'\bT(\d+)\s+M6\b', clean, re.IGNORECASE)
         if match_cambio:
             t_num = match_cambio.group(1)
+            utensile_corrente = t_num
             descrizione = utensili_info.get(t_num, "")
 
             prossimo_t = ""
@@ -152,8 +175,9 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
             clean = "Z3"
 
-        # Gestione cicli di foratura / maschiatura (G81 / G84) SENZA G64 e saltando la prima coordinata duplicata
+        # Gestione cicli di foratura / maschiatura (G81 / G84)
         if clean.startswith("G81") or clean.startswith("G84"):
+            in_ciclo_foratura = True
             parts = clean.split()
             cmd_g = parts[0]
             resto = " ".join(parts[1:])
@@ -162,7 +186,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             
-            # Salta la prima riga di posizionamento subito successiva se corrisponde alle coordinate del primo foro o se contiene X/Y
             while i < len(righe_greffe):
                 riga_successiva_grezza = righe_greffe[i].strip()
                 if not riga_successiva_grezza or riga_successiva_grezza.startswith('(') or riga_successiva_grezza.startswith('['):
@@ -178,6 +201,9 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                     break
                 break
             continue
+
+        if clean.startswith("G80"):
+            in_ciclo_foratura = False
 
         if "G41" in clean or "G42" in clean:
             if not any(k in clean for k in ['X', 'Y', 'Z']) and i < len(righe_greffe):
@@ -206,7 +232,8 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if ("Z" in clean and not "Z-" in clean and not any(g in clean for g in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3'])) or clean in ["Z3", "Z100"]:
             is_z_rapido = True
 
-        if is_z_rapido:
+        # Inserisce G64 solo se NON siamo dentro un ciclo di foratura
+        if is_z_rapido and not in_ciclo_foratura:
             righe_elaborate.append(f"N{n_linea} G64")
             n_linea += 2
             modo_movimento_corrente = "G00"
@@ -234,13 +261,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
         
-    # Chiusura finale pulita: solo richiamo del primo utensile (senza descrizione né giri mandrino) e M30
-    righe_elaborate.append(f"N{n_linea} T{primo_utensile} M06 M5 M9")
-    n_linea += 2
-    righe_elaborate.append(f"N{n_linea} G00 G90 G54")
-    n_linea += 2
-    righe_elaborate.append(f"N{n_linea} M30")
-
     return "\n".join(righe_elaborate)
 
 
