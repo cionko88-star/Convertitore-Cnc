@@ -202,15 +202,15 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             
-            # Controlla se la riga successiva contiene coordinate X/Y e inserisce G00
+            # AGGIUNTO G00 SUL PRIMO POSIZIONAMENTO DEL CICLO DI FORATURA
             if i < len(righe_greffe):
                 prox_riga = righe_greffe[i].strip()
                 prox_clean = re.sub(r'^N\d+\s*', '', prox_riga)
                 prox_clean = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', prox_clean)
                 prox_clean = re.sub(r'\s+', ' ', prox_clean).strip()
                 if any(k in prox_clean.upper() for k in ['X', 'Y']) and not any(g in prox_clean.upper() for g in ['G80', 'G0', 'G1']):
-                    righe_elaborate.append(f"N{n_linea + 2} G00 {prox_clean}")
-                    n_linea += 4
+                    righe_elaborate.append(f"N{n_linea} G00 {prox_clean}")
+                    n_linea += 2
                     i += 1
                     
                     m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', prox_clean)
@@ -272,14 +272,11 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
         is_g_speciale = any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"])
         
-        if "G02" in clean or "G2" in clean or "G03" in clean or "G3" in clean:
-            modo_movimento_corrente = "G01"
-
         if clean.startswith("G00") or clean.startswith("G0 "):
             modo_movimento_corrente = "G00"
             clean = re.sub(r'^G0?0?\s*', '', clean)
         elif is_g_speciale:
-            pass
+            modo_movimento_corrente = "G01"  # DOPO G02/G03 IMPOSTA IL MODO CORRENTE SU G01
         elif clean.startswith("G01") or clean.startswith("G1 "):
             modo_movimento_corrente = "G01"
             clean = re.sub(r'^G0?1\s*', '', clean)
