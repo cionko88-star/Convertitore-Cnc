@@ -144,7 +144,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
             clean = "Z3"
 
-        # Gestione cicli di foratura / maschiatura (G81 / G84)
+        # Gestione cicli di foratura / maschiatura (G81 / G84) SENZA G64 e saltando la prima coordinata duplicata
         if clean.startswith("G81") or clean.startswith("G84"):
             parts = clean.split()
             cmd_g = parts[0]
@@ -154,14 +154,23 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             
-            # Salta la prima riga di posizionamento subito successiva al G81/G84 (ormai integrata nel ciclo)
-            if i < len(righe_greffe):
-                prossima_riga_test = re.sub(r'^N\d+\s*', '', righe_greffe[i]).strip()
-                prossima_riga_test = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', prossima_riga_test)
-                prossima_riga_test = re.sub(r'\s+', ' ', prossima_riga_test).strip()
-                # Se la riga successiva contiene solo coordinate X/Y o è un G00/G01 con le stesse coordinate, la salta
-                if any(k in prossima_riga_test for k in ['X', 'Y']) and not any(k in prossima_riga_test for k in ['Z', 'G80', 'G0', 'G1']):
+            # Salta la prima riga di posizionamento subito successiva se corrisponde alle coordinate del primo foro o se contiene X/Y
+            while i < len(righe_greffe):
+                riga_successiva_grezza = righe_greffe[i].strip()
+                if not riga_successiva_grezza or riga_successiva_grezza.startswith('(') or riga_successiva_grezza.startswith('['):
+                    break
+                test_prox = re.sub(r'^N\d+\s*', '', riga_successiva_grezza)
+                test_prox = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', test_prox)
+                test_prox = re.sub(r'\s+', ' ', test_prox).strip()
+                
+                # Se è un G64 o un comando di chiusura/ritorno, fermati
+                if "G64" in test_prox or "G80" in test_prox or "Z" in test_prox:
+                    break
+                # Se contiene coordinate X o Y senza Z, è il posizionamento ridondante del primo foro: saltalo!
+                if any(k in test_prox for k in ['X', 'Y']):
                     i += 1
+                    break
+                break
             continue
 
         if "G41" in clean or "G42" in clean:
@@ -219,21 +228,10 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
         
-    # Chiusura finale con il primo utensile e M30
-    descrizione_primo = utensili_info.get(primo_utensile, "")
-    if descrizione_primo:
-        if re.match(rf'^T\s*{primo_utensile}\b', descrizione_primo, re.IGNORECASE):
-            desc_str_finale = f" ( {descrizione_primo} )"
-        else:
-            desc_str_finale = f" ( T{primo_utensile} - {descrizione_primo} )"
-    else:
-        desc_str_finale = f" ( T{primo_utensile} )"
-
-    righe_elaborate.append(f"N{n_linea} T{primo_utensile} M06 M5 M9{desc_str_finale}")
+    # Chiusura finale pulita: solo richiamo del primo utensile (senza descrizione né giri mandrino) e M30
+    righe_elaborate.append(f"N{n_linea} T{primo_utensile} M06 M5 M9")
     n_linea += 2
     righe_elaborate.append(f"N{n_linea} G00 G90 G54")
-    n_linea += 2
-    righe_elaborate.append(f"N{n_linea} S4400 M3")
     n_linea += 2
     righe_elaborate.append(f"N{n_linea} M30")
 
