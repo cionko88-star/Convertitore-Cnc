@@ -100,6 +100,10 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not clean:
             continue
 
+        # Rimozione esplicita di O1 o simili identificativi di programma
+        if re.search(r'\bO\d+\b', clean, re.IGNORECASE):
+            continue
+
         if "M30" in clean.upper():
             righe_elaborate.append(f"N{n_linea} M30")
             break
