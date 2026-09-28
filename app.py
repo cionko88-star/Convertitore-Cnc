@@ -8,7 +8,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     righe_greffe = testo_selca.strip().split('\n')
     righe_elaborate = []
     
-    # 1. Parsing preliminare per trovare tutte le descrizioni degli utensili
+    # 1. Parsing preliminare per trovare tutte le descrizioni degli utensili nel formato richiesto
     utensili_info = {} 
     for idx, riga in enumerate(righe_greffe):
         riga_clean = riga.strip()
@@ -16,6 +16,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if match_t:
             t_num = match_t.group(1)
             descrizione = ""
+            # Cerca la descrizione tra parentesi sulla stessa riga o su quella precedente
             match_desc = re.search(r'[\(\[]\s*(.*?)\s*[\)\]]', riga_clean)
             if match_desc:
                 descrizione = match_desc.group(1).strip()
@@ -25,6 +26,9 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                     match_desc_prev = re.search(r'[\(\[]\s*(.*?)\s*[\)\]]', prev_riga)
                     if match_desc_prev:
                         descrizione = match_desc_prev.group(1).strip()
+            
+            # Pulisce la descrizione da prefissi doppi tipo T2 se già presenti dentro
+            descrizione = re.sub(r'^T\d+\s*-\s*', '', descrizione, flags=re.IGNORECASE).strip()
             utensili_info[t_num] = descrizione
 
     t_sequenza = list(utensili_info.keys())
@@ -81,7 +85,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             except ValueError:
                 pass
 
-            # Inserimento della descrizione utensile
+            # Formattazione esatta richiesta: ( T2 - FRESA 4TG. MET. DURO - D.16 )
             if descrizione:
                 desc_str = f" ( T{t_num} - {descrizione} )"
             else:
@@ -150,6 +154,18 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             n_linea += 2
             continue
 
+        # Trattamento di G40 unendo il movimento sulla stessa riga
+        if "G40" in clean:
+            if not any(k in clean for k in ['X', 'Y', 'Z']) and i < len(righe_greffe):
+                prossima_riga = righe_greffe[i].strip()
+                prossima_riga = re.sub(r'^N\d+\s*', '', prossima_riga)
+                if any(k in prossima_riga for k in ['X', 'Y', 'Z']):
+                    clean += " " + prossima_riga
+                    i += 1
+            righe_elaborate.append(f"N{n_linea} {clean}")
+            n_linea += 2
+            continue
+
         is_z_rapido = False
         if ("Z" in clean and not "Z-" in clean and not any(g in clean for g in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3'])) or clean in ["Z3", "Z100"]:
             is_z_rapido = True
@@ -162,7 +178,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             clean = re.sub(r'^G0?0?\s*', '', clean)
             clean = f"G00 {clean}".strip()
 
-        is_g_speciale = any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3", "G40"])
+        is_g_speciale = any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"])
         
         if "G02" in clean or "G2" in clean or "G03" in clean or "G3" in clean:
             modo_movimento_corrente = "G01"
@@ -176,7 +192,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             clean = re.sub(r'^G0?1\s*', '', clean)
             clean = f"G01 {clean}"
         else:
-            # Mantiene la fisionomia originale senza forzare G01 se non necessario
             if modo_movimento_corrente == "G01" and any(k in clean for k in ['X', 'Y', 'Z']):
                 pass
 
