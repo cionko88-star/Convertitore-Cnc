@@ -125,16 +125,19 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             resto = re.sub(r'J\d+', 'R3', resto)
             clean = f"G99 {cmd_g} {resto}"
 
-        # Verifica se siamo in presenza di un movimento in Z rapido (es. Z3 isolato o senza Z-)
+        # Verifica se siamo in presenza di un movimento in Z rapido
         is_z_rapido = False
         if ("Z" in clean and not "Z-" in clean and not any(g in clean for g in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3'])) or clean in ["Z3", "Z100"]:
             is_z_rapido = True
 
-        # Se è un movimento Z rapido, inserisce G64 PRIMA del movimento
+        # Se è un movimento Z rapido, inserisce G64 PRIMA e forza G00 nel movimento stesso
         if is_z_rapido:
             righe_elaborate.append(f"N{n_linea} G64")
             n_linea += 2
             modo_movimento_corrente = "G00"
+            clean = re.sub(r'^G0?1\s*', '', clean)
+            clean = re.sub(r'^G0?0?\s*', '', clean)
+            clean = f"G00 {clean}".strip()
 
         # Preservazione G41, G42, G40, G02, G03
         is_g_speciale = any(clean.startswith(g) for g in ["G41", "G42", "G40", "G02", "G2", "G03", "G3"])
