@@ -152,11 +152,8 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             except Exception:
                 pass
 
-            codice_acc = "M51" if t_num in ["1", "4"] else "M8"
-            if t_num == "6":
-                codice_acc = "M8"
-
-            righe_elaborate.append(f"N{n_linea} {s_val} M3 T{prox_t} {codice_acc}")
+            # Rimosso l'inserimento dell'acqua qui (ora contiene solo velocità, M3 e pre-selezione utensile)
+            righe_elaborate.append(f"N{n_linea} {s_val} M3 T{prox_t}")
             n_linea += 2
             continue
 
@@ -200,7 +197,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if clean.startswith("G80"):
             in_ciclo_foratura = False
 
-        # Gestione G41 / G42 (forzano la modalità G01 in quanto tagli)
+        # Gestione G41 / G42 / G40
         if "G41" in clean or "G42" in clean or "G40" in clean:
             if not any(k in clean for k in ['X', 'Y', 'Z']) and i < len(righe_greffe):
                 prossima_riga = righe_greffe[i].strip()
@@ -235,7 +232,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 clean = re.sub(r'^G0?0?\s*', '', clean)
                 clean = re.sub(r'^G0?1\s*', '', clean)
                 clean = clean.strip()
-                # Se siamo in G01 (es. dopo G41/G42 o precedente G01), non mettiamo G00!
                 if modo_movimento_corrente == "G00":
                     clean = f"G00 {clean}".strip()
 
