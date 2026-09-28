@@ -41,8 +41,16 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
             utensili_info[t_num] = descrizione
 
-    t_sequenza = list(utensili_info.keys())
-    primo_utensile = t_sequenza[0] if t_sequenza else "1"
+    # Estrae la sequenza ordinata di tutti gli utensili unici incontrati nel programma
+    t_sequenza_ordinata = []
+    for riga in righe_greffe:
+        m_t = re.search(r'\bT(\d+)\s+M6\b', riga, re.IGNORECASE)
+        if m_t:
+            t_num = m_t.group(1)
+            if t_num not in t_sequenza_ordinata:
+                t_sequenza_ordinata.append(t_num)
+
+    primo_utensile = t_sequenza_ordinata[0] if t_sequenza_ordinata else "1"
     
     n_linea = 2
     modo_movimento_corrente = None
@@ -88,9 +96,9 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
             prossimo_t = ""
             try:
-                current_idx_in_seq = t_sequenza.index(t_num)
-                if current_idx_in_seq + 1 < len(t_sequenza):
-                    prossimo_t = t_sequenza[current_idx_in_seq + 1]
+                current_idx_in_seq = t_sequenza_ordinata.index(t_num)
+                if current_idx_in_seq + 1 < len(t_sequenza_ordinata):
+                    prossimo_t = t_sequenza_ordinata[current_idx_in_seq + 1]
             except ValueError:
                 pass
 
@@ -163,10 +171,8 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 test_prox = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', test_prox)
                 test_prox = re.sub(r'\s+', ' ', test_prox).strip()
                 
-                # Se è un G64 o un comando di chiusura/ritorno, fermati
                 if "G64" in test_prox or "G80" in test_prox or "Z" in test_prox:
                     break
-                # Se contiene coordinate X o Y senza Z, è il posizionamento ridondante del primo foro: saltalo!
                 if any(k in test_prox for k in ['X', 'Y']):
                     i += 1
                     break
