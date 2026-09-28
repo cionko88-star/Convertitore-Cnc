@@ -1,336 +1,339 @@
-(PROG: 200011974-A)
-(MACCHINA: PARPAS_PHS812)
-(CLIENTE: TECHNE)
-(DISEGNO: 200011974)
-(DESCRIZIONE: PIASTRA INTERMEDIA SOFFIAGGIO)
-(MATERIALE: LAMIERA FE 445x640 SP.28)
-(Data: 07-08-18 CHRISTIAN)
-(PRIMA PARTE)
-(STRINGERE IL PEZZO SULLO SPESSORE DI 335mm LASCIANDOLO SPORGENTE A DESTRA)
-(ALMENO PER 30mm)
-(APPOGGIO "X" A SINISTRA FISSO)
-(-------------------------------------------------------------------------------)
-(SI ESEGUE: INTESTATURA DEL PEZZO - ESECUZIONE CAVE E N.4 FORI M6)
-(-------------------------------------------------------------------------------)
-(LO ZERO X E' SUL LATO A SINISTRA CALCOLANDO IL SOVRA-METALLO)
-(LO ZERO Y E' SUL LATO VERSO L'OPERATORE)
-(LO ZERO Z E' SUL PIANO SUPERIORE DEL PEZZO)
-(-------------------------------------------------------------------------------)
-( T1 FRESA 3 INS. SPALL. RETTO - D.20 )
-(-------------------------------------------------------------------------------)
-( T2 FRESA 4TG. MET. DURO  - D.16 )
-(-------------------------------------------------------------------------------)
-( T3 FRESA PASSO VAR. 4TG. MET. DURO FRAISA - D.12 )
-(-------------------------------------------------------------------------------)
-( T4 PUNTA FORATA MET. DURO SECO SD205A - D.5.1)
-(-------------------------------------------------------------------------------)
-( T6 CENTRINO MINIMASTER SECO - D.12 )
-( N.B.= METTERE RAGGIO R.=0.3)
-(-------------------------------------------------------------------------------)
-( T5 MASCHIO CIECO SENZA PUNTA - M6)
-(-------------------------------------------------------------------------------)
-N2 G00 G17 G40 G49 G80 G54 G90
-( SGROSSATURA CENTRALE CAVE)
-N4 T1 M06 M5 M9 ( T1 FRESA 3 INS. SPALL. RETTO - D.20 )
-N6 G00 G90 G54
-N8 S4400 M3 T2 M51
-N10 G00 X460 Y128.5
-N12 G64
-N14 G00 Z3
-N16 G01 Z-0.963 F2000
-N18 X440 F1000
-N20 X0
-N22 X-20
-N24 G64
-N26 G00 Z3
-N28 G00 X460
-N30 X440 F1000
-N32 X0
-N34 X-20
-N36 G64
-N38 G00 Z3
-N40 G00 X460
-N42 G01 Z-2.888 F2000
-N44 X440 F1000
-N46 X0
-N48 X-20
-N50 G64
-N52 G00 Z3
-N54 G00 X460
-N56 G01 Z-3.85 F2000
-N58 X440 F1000
-N60 X0
-N62 X-20
-N64 G64
-N66 G00 Z3
-N68 G00 X460
-N70 G01 Z-4.813 F2000
-N72 X440 F1000
-N74 X0
-N76 X-20
-N78 G64
-N80 G00 Z3
-N82 G00 X460
-N84 G01 Z-5.775 F2000
-N86 X440 F1000
-N88 X0
-N90 X-20
-N92 G64
-N94 G00 Z3
-N96 G00 X460
-N98 G01 Z-6.737 F2000
-N100 X440 F1000
-N102 X0
-N104 X-20
-N106 G64
-N108 G00 Z3
-N110 G00 X460
-N112 G01 Z-7.7 F2000
-N114 X440 F1000
-N116 X0
-N118 X-20
-N120 G64
-N122 G00 Z3
-N124 G00 X460
-N126 G01 Z-8 F2000
-N128 X440 F1000
-N130 X0
-N132 X-20
-N134 G64
-N136 G00 Z3
-N138 G00 Y243.5
-N140 G01 Z-0.963 F2000
-N142 X0 F1000
-N144 X440
-N146 X460
-N148 G64
-N150 G00 Z3
-N152 G00 X-20
-N154 X0 F1000
-N156 X440
-N158 X460
-N160 G64
-N162 G00 Z3
-N164 G00 X-20
-N166 G01 Z-2.888 F2000
-N168 X0 F1000
-N170 X440
-N172 X460
-N174 G64
-N176 G00 Z3
-N178 G00 X-20
-N180 G01 Z-3.85 F2000
-N182 X0 F1000
-N184 X440
-N186 X460
-N188 G64
-N190 G00 Z3
-N192 G00 X-20
-N194 G01 Z-4.813 F2000
-N196 X0 F1000
-N198 X440
-N200 X460
-N202 G64
-N204 G00 Z3
-N206 G00 X-20
-N208 G01 Z-5.775 F2000
-N210 X0 F1000
-N212 X440
-N214 X460
-N216 G64
-N218 G00 Z3
-N220 G00 X-20
-N222 G01 Z-6.737 F2000
-N224 X0 F1000
-N226 X440
-N228 X460
-N230 G64
-N232 G00 Z3
-N234 G00 X-20
-N236 G01 Z-7.7 F2000
-N238 X0 F1000
-N240 X440
-N242 X460
-N244 G64
-N246 G00 Z3
-N248 G00 X-20
-N250 G01 Z-8 F2000
-N252 X0 F1000
-N254 X440
-N256 X460
-N258 G64
-N260 G00 Z100
-N262 M9
-N264 M5
-( INTESTATURA A DESTRA)
-N266 T2 M06 M5 M9 ( T2 FRESA 4TG. MET. DURO )
-N268 G00 G90 G54
-N270 S4300 M3 T3 M51
-N272 G00 X428.468 Y356.095
-N274 G64
-N276 G00 Z3 M8
-N278 G01 Z-30 F650
-N280 G41 X419.04 Y346.667
-N282 X430.354 Y335.354
-N284 X440.354 Y325.354
-N286 G02 X440.5 Y325 I440 J325
-N288 G01 Y10
-N290 G02 X440.354 Y9.646 I440 J10
-N292 G01 X430.354 Y-0.354
-N294 X419.04 Y-11.667
-N296 G40 X428.468 Y-21.095
-N298 G64
-N300 G00 Z3
-N302 G00 X428.114 Y355.742
-N304 G01 Z-30
-N306 G41 X418.686 Y346.314
-N308 X430 Y335
-N310 X440 Y325
-N312 Y10
-N314 X430 Y0
-N316 X418.686 Y-11.314
-N318 G40 X428.114 Y-20.742
-N320 G64
-N322 G00 Z100
-N324 M9
-N326 M5
-( FINITURA SCASSI)
-N328 T3 M06 M5 M9 ( T3 FRESA PASSO VAR. 4TG. MET. DURO FRAISA - D.12 )
-N330 G00 G90 G54
-N332 S5600 M3 T4 M51
-N334 G00 X452 Y126
-N336 G64
-N338 G00 Z3 M8
-N340 G01 Z-8 F2000
-N342 G42 Y116 F800
-N344 X440
-N346 X0
-N348 X-12
-N350 G40 Y126
-N352 G64
-N354 G00 Z3
-N356 G00 Y131
-N358 G01 Z-8 F2000
-N360 G42 Y141 F800
-N362 X0
-N364 X440
-N366 X452
-N368 G40 Y131
-N370 G64
-N372 G00 Z3
-N374 G00 Y241
-N376 G01 Z-8 F2000
-N378 G42 Y231 F800
-N380 X440
-N382 X15.655
-N384 X0
-N386 X-12
-N388 G40 Y241
-N390 G64
-N392 G00 Z3
-N394 G00 Y246
-N396 G01 Z-8 F2000
-N398 G42 Y256 F800
-N400 X0
-N402 X440
-N404 X452
-N406 G40 Y246
-N408 G64
-N410 G00 Z100
-N412 M9
-N414 M5
-( PREFORI PER M6)
-N416 T4 M06 M5 M9 ( T4 PUNTA FORATA MET. DURO SECO SD205A - D.5.1 )
-N418 G00 G90 G54
-N420 S8400 M3 T6 M51
-N422 G00 X237.5 Y170
-N424 G00 Z3
-N426 G99 G81 Z-18.5 R3 F1300
-N428 X202.5 Y170
-N430 X202.5 Y285
-N432 X237.5 Y285
-N434 G80
-N436 G64
-N438 G00 Z100
-N440 M9
-N442 M5
-( SMUSSI M6)
-N444 T6 M06 M5 M9 ( T6 CENTRINO MINIMASTER SECO - D.12 )
-N446 G00 G90 G54
-N448 S4000 M3 T5 M51
-N450 G00 X237.5 Y170
-N452 G00 Z3 M8
-N454 G99 G81 Z-3 R3 F400
-N456 X202.5 Y170
-N458 X202.5 Y285
-N460 X237.5 Y285
-N462 G80
-N464 G64
-N466 G00 Z5
-( SMUSSO A DX)
-N468 S9000 M3
-N470 X429 Y345 R
-N472 Y336 F1800
-N474 X431
-N476 X441 Y326
-N478 Y9
-N480 Y-1 X431
-N482 X429
-N484 Y-8
-N486 G64
-N488 G00 Z2 R
-( SMUSSI CAVE)
-N490 G00 X-10 Y122.6
-N492 Y117.6 F1800
-N494 X0
-N496 X440
-N498 X450
-N500 Y122.6
-N502 G64
-N504 G00 Z3
-N506 G00 Y134.4
-N508 Y139.4 F1800
-N510 X440
-N512 X0
-N514 X-10
-N516 Y134.4
-N518 G64
-N520 G00 Z3
-N522 G00 Y237.6
-N524 Y232.6 F1800
-N526 X0
-N528 X15.655
-N530 X440
-N532 X450
-N534 Y237.6
-N536 G64
-N538 G00 Z3
-N540 G00 Y249.4
-N542 Y254.4 F1800
-N544 X440
-N546 X0
-N548 X-10
-N550 Y249.4
-N552 G64
-N554 G00 Z100
-N556 M9
-N558 M5
-( MASCHIATURA M6)
-N560 T5 M06 M5 M9 ( T5 MASCHIO CIECO SENZA PUNTA - M6 )
-N562 G00 G90 G54
-N564 S500 M3 T1 M51
-N566 G00 X237.5 Y170
-N568 G00 Z3 M8
-N570 G99 G84 Z-15 R3 F1000
-N572 X202.5 Y170
-N574 X202.5 Y285
-N576 X237.5 Y285
-N578 G80
-N580 G64
-N582 G00 Z100
-N584 M9
-N586 M5
-N588 T1 M06 M5 M9 ( T1 )
-N590 G00 G90 G54
-N592 S4400 M3
-N594 M30
+from flask import Flask, render_template_string, request, Response
+import re
+import os
+
+app = Flask(__name__)
+
+def converti_selca_a_iso(testo_selca: str) -> str:
+    righe_greffe = testo_selca.strip().split('\n')
+    righe_elaborate = []
+    
+    # 1. Parsing preliminare per trovare le descrizioni degli utensili fermandosi al diametro (- D.xx)
+    utensili_info = {} 
+    for idx, riga in enumerate(righe_greffe):
+        riga_clean = riga.strip()
+        match_t = re.search(r'\bT(\d+)\s+M6\b', riga_clean, re.IGNORECASE)
+        if match_t:
+            t_num = match_t.group(1)
+            descrizione = ""
+            match_desc = re.search(r'[\(\[]\s*(.*?)\s*[\)\]]', riga_clean)
+            if match_desc:
+                descrizione = match_desc.group(1).strip()
+            else:
+                if idx > 0:
+                    prev_riga = righe_greffe[idx - 1].strip()
+                    match_desc_prev = re.search(r'[\(\[]\s*(.*?)\s*[\)\]]', prev_riga)
+                    if match_desc_prev:
+                        descrizione = match_desc_prev.group(1).strip()
+            
+            if not descrizione:
+                for r_testa in righe_greffe[:30]:
+                    m_testa = re.search(rf'\bT\s*{t_num}\b\s*[:-]?\s*(.*)', r_testa, re.IGNORECASE)
+                    if m_testa:
+                        descrizione = m_testa.group(1).strip()
+                        break
+            
+            # Pulisce la descrizione tagliando tutto ciò che si trova dopo il diametro
+            if descrizione:
+                match_taglio = re.search(r'(.*?-?\s*D\.\d+(?:\.\d+)?)', descrizione, re.IGNORECASE)
+                if match_taglio:
+                    descrizione = match_taglio.group(1).strip()
+                descrizione = re.sub(r'\s*-\s*$', '', descrizione).strip()
+
+            utensili_info[t_num] = descrizione
+
+    t_sequenza = list(utensili_info.keys())
+    
+    n_linea = 2
+    modo_movimento_corrente = None
+    header_iniziale_inserito = False
+    
+    i = 0
+    while i < len(righe_greffe):
+        riga_grezza = righe_greffe[i].strip()
+        i += 1
+        
+        if not riga_grezza:
+            continue
+            
+        if riga_grezza.startswith('[') or riga_grezza.startswith('('):
+            commento = riga_grezza
+            if commento.startswith('['):
+                commento = '(' + commento[1:]
+            commento = commento.replace('[', '(').replace(']', ')')
+            if not commento.endswith(')'):
+                commento += ')'
+            righe_elaborate.append(commento)
+            continue
+            
+        clean = re.sub(r'^N\d+\s*', '', riga_grezza)
+        if not clean:
+            continue
+            
+        if re.search(r'\bG17\b', clean, re.IGNORECASE) or re.search(r'\bO1\b', clean, re.IGNORECASE) or re.search(r'\b1\b', clean):
+            if not header_iniziale_inserito:
+                righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
+                n_linea += 2
+                header_iniziale_inserito = True
+            continue
+
+        if re.search(r'\bG49\b', clean, re.IGNORECASE):
+            continue
+            
+        # Intercetta il cambio utensile
+        match_cambio = re.search(r'\bT(\d+)\s+M6\b', clean, re.IGNORECASE)
+        if match_cambio:
+            t_num = match_cambio.group(1)
+            descrizione = utensili_info.get(t_num, "")
+
+            prossimo_t = ""
+            try:
+                current_idx_in_seq = t_sequenza.index(t_num)
+                if current_idx_in_seq + 1 < len(t_sequenza):
+                    prossimo_t = t_sequenza[current_idx_in_seq + 1]
+            except ValueError:
+                pass
+
+            if descrizione:
+                if re.match(rf'^T\s*{t_num}\b', descrizione, re.IGNORECASE):
+                    desc_str = f" ( {descrizione} )"
+                else:
+                    desc_str = f" ( T{t_num} - {descrizione} )"
+            else:
+                desc_str = f" ( T{t_num} )"
+
+            righe_elaborate.append(f"N{n_linea} T{t_num} M06 M5 M9{desc_str}")
+            n_linea += 2
+            
+            righe_elaborate.append(f"N{n_linea} G00 G90 G54")
+            n_linea += 2
+            
+            s_val = "S4400"
+            m_s = re.search(r'S(\d+)', clean, re.IGNORECASE)
+            if m_s:
+                s_val = f"S{m_s.group(1)}"
+            elif i < len(righe_greffe):
+                m_s_next = re.search(r'S(\d+)', righe_greffe[i], re.IGNORECASE)
+                if m_s_next:
+                    s_val = f"S{m_s_next.group(1)}"
+                    i += 1
+
+            if prossimo_t:
+                righe_elaborate.append(f"N{n_linea} {s_val} M3 T{prossimo_t} M51")
+            else:
+                righe_elaborate.append(f"N{n_linea} {s_val} M3")
+            n_linea += 2
+            continue
+
+        if clean.startswith("S") and "M3" in clean:
+            righe_elaborate.append(f"N{n_linea} {clean}")
+            n_linea += 2
+            continue
+
+        if '[' in clean or ']' in clean:
+            clean = clean.replace('[', '(').replace(']', ')')
+            if not clean.endswith(')'):
+                clean += ')'
+            righe_elaborate.append(f"N{n_linea} {clean}")
+            n_linea += 2
+            continue
+            
+        clean = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', clean)
+        clean = re.sub(r'\s+', ' ', clean).strip()
+        
+        if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
+            clean = "Z3"
+
+        # Gestione cicli di foratura / maschiatura (G81 / G84)
+        if clean.startswith("G81") or clean.startswith("G84"):
+            parts = clean.split()
+            cmd_g = parts[0]
+            resto = " ".join(parts[1:])
+            resto = re.sub(r'J\d+', 'R3', resto)
+            clean = f"G99 {cmd_g} {resto}"
+            righe_elaborate.append(f"N{n_linea} {clean}")
+            n_linea += 2
+            
+            # Salta la riga successiva se ripete identica la prima coordinata del foro
+            if i < len(righe_greffe):
+                prossima_riga_test = re.sub(r'^N\d+\s*', '', righe_greffe[i]).strip()
+                prossima_riga_test = re.sub(r'([XYZ])(-?\d+\.?\d*)', r'\1\2 ', prossima_riga_test)
+                prossima_riga_test = re.sub(r'\s+', ' ', prossima_riga_test).strip()
+                if clean.endswith(prossima_riga_test) or whips_match_coords(clean, prossima_riga_test):
+                    i += 1
+            continue
+
+        if "G41" in clean or "G42" in clean:
+            if not any(k in clean for k in ['X', 'Y', 'Z']) and i < len(righe_greffe):
+                prossima_riga = righe_greffe[i].strip()
+                prossima_riga = re.sub(r'^N\d+\s*', '', prossima_riga)
+                if any(k in prossima_riga for k in ['X', 'Y']):
+                    clean += " " + prossima_riga
+                    i += 1
+            modo_movimento_corrente = "G01"
+            righe_elaborate.append(f"N{n_linea} {clean}")
+            n_linea += 2
+            continue
+
+        if "G40" in clean:
+            if not any(k in clean for k in ['X', 'Y', 'Z']) and i < len(righe_greffe):
+                prossima_riga = righe_greffe[i].strip()
+                prossima_riga = re.sub(r'^N\d+\s*', '', prossima_riga)
+                if any(k in prossima_riga for k in ['X', 'Y', 'Z']):
+                    clean += " " + prossima_riga
+                    i += 1
+            righe_elaborate.append(f"N{n_linea} {clean}")
+            n_linea += 2
+            continue
+
+        is_z_rapido = False
+        if ("Z" in clean and not "Z-" in clean and not any(g in clean for g in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3'])) or clean in ["Z3", "Z100"]:
+            is_z_rapido = True
+
+        if is_z_rapido:
+            righe_elaborate.append(f"N{n_linea} G64")
+            n_linea += 2
+            modo_movimento_corrente = "G00"
+            clean = re.sub(r'^G0?1\s*', '', clean)
+            clean = re.sub(r'^G0?0?\s*', '', clean)
+            clean = f"G00 {clean}".strip()
+
+        is_g_speciale = any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"])
+        
+        if "G02" in clean or "G2" in clean or "G03" in clean or "G3" in clean:
+            modo_movimento_corrente = "G01"
+
+        if clean.startswith("G00") or clean.startswith("G0 "):
+            modo_movimento_corrente = "G00"
+        elif is_g_speciale:
+            pass
+        elif clean.startswith("G01") or clean.startswith("G1 "):
+            modo_movimento_corrente = "G01"
+            clean = re.sub(r'^G0?1\s*', '', clean)
+            clean = f"G01 {clean}"
+        else:
+            if modo_movimento_corrente == "G01" and any(k in clean for k in ['X', 'Y', 'Z']):
+                pass
+
+        righe_elaborate.append(f"N{n_linea} {clean}")
+        n_linea += 2
+        
+    return "\n".join(righe_elaborate)
+
+def whips_match_coords(riga_g81: str, riga_succ: str) -> bool:
+    m_x1 = re.search(r'X(-?\d+\.?\d*)', riga_g81)
+    m_y1 = re.search(r'Y(-?\d+\.?\d*)', riga_g81)
+    m_x2 = re.search(r'X(-?\d+\.?\d*)', riga_succ)
+    m_y2 = re.search(r'Y(-?\d+\.?\d*)', riga_succ)
+    
+    x_match = (not m_x1 and not m_x2) or (m_x1 and m_x2 and m_x1.group(1) == m_x2.group(1))
+    y_match = (not m_y1 and not m_y2) or (m_y1 and m_y2 and m_y1.group(1) == m_y2.group(1))
+    return x_match and y_match
+
+
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Convertitore CNC SELCA ➔ ISO</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        body { display: flex; height: 100vh; background-color: #f7f6f0; color: #1e293b; }
+        .sidebar { width: 250px; background-color: #1e293b; color: #fff; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+        .logo { font-size: 18px; font-weight: bold; color: #38bdf8; }
+        .main-content { flex: 1; padding: 30px; overflow-y: auto; }
+        .header-title { font-size: 26px; font-weight: 800; color: #0f172a; margin-bottom: 15px; }
+        .control-bar { display: flex; align-items: center; gap: 20px; margin-bottom: 15px; background: #fff; padding: 12px 20px; border-radius: 10px; border: 1px solid #e2e8f0; flex-wrap: wrap; }
+        .direction-badge { font-weight: 700; color: #0d9488; }
+        .input-group { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #334155; }
+        .input-group input { padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; width: 180px; }
+        .workspace { display: flex; gap: 20px; }
+        .card { flex: 1; background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; }
+        textarea { width: 100%; height: 420px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 13px; resize: none; background: #fafafa; }
+        textarea.output { background: #0f172a; color: #38bdf8; }
+        .actions { display: flex; justify-content: space-between; margin-top: 15px; }
+        .btn { padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; font-size: 14px; }
+        .btn-primary { background-color: #0d9488; color: #fff; }
+        .btn-secondary { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">&lt;/&gt; CNC CONVERTER</div>
+    </div>
+    <div class="main-content">
+        <h1 class="header-title">Convertitore CNC SELCA ➔ ISO</h1>
+        <form method="POST" action="/converti" id="mainForm">
+            <div class="control-bar">
+                <span>Modalità:</span>
+                <span class="direction-badge">SELCA ➔ ISO (.eia)</span>
+                <div class="input-group">
+                    <label for="nome_programma">Nome File Output:</label>
+                    <input type="text" id="nome_programma" name="nome_programma" value="{{ nome_programma or '200011974-A' }}">
+                </div>
+            </div>
+            <div class="workspace">
+                <div class="card">
+                    <h3>Codice Sorgente (SELCA)</h3>
+                    <textarea name="codice_sorgente" placeholder="Incolla il programma Selca...">{{ codice_sorgente }}</textarea>
+                    <div class="actions">
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">📁 Carica file</button>
+                        <input type="file" id="fileInput" style="display:none" onchange="caricaFile(this)">
+                        <button type="submit" class="btn btn-primary">⚙️ Converti</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Codice Convertito (ISO)</h3>
+                    <textarea class="output" readonly>{{ codice_convertito }}</textarea>
+                    <div class="actions" style="justify-content: flex-end;">
+                        <button type="submit" formaction="/scarica" class="btn btn-primary">Scarica File</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+    <script>
+        function caricaFile(input) {
+            let file = input.files[0];
+            if (file) {
+                let reader = new FileReader();
+                reader.onload = function(e) {
+                    document.querySelector("textarea[name='codice_sorgente']").value = e.target.result;
+                };
+                reader.readAsText(file);
+            }
+        }
+    </script>
+</body>
+</html>
+"""
+
+@app.route('/')
+def index():
+    return render_template_string(HTML_TEMPLATE, codice_sorgente="", codice_convertito="", nome_programma="200011974-A")
+
+@app.route('/converti', methods=['POST'])
+def converti():
+    codice_sorgente = request.form.get('codice_sorgente', '')
+    nome_programma = request.form.get('nome_programma', '200011974-A').strip()
+    codice_convertito = converti_selca_a_iso(codice_sorgente)
+    return render_template_string(HTML_TEMPLATE, codice_sorgente=codice_sorgente, codice_convertito=codice_convertito, nome_programma=nome_programma)
+
+@app.route('/scarica', methods=['POST'])
+def scarica():
+    codice_sorgente = request.form.get('codice_sorgente', '')
+    nome_programma = request.form.get('nome_programma', '200011974-A').strip()
+    codice_convertito = converti_selca_a_iso(codice_sorgente)
+    
+    nome_file_pulito = re.sub(r'\.eia$', '', nome_programma, flags=re.IGNORECASE)
+    
+    return Response(
+        codice_convertito, 
+        mimetype="text/plain", 
+        headers={"Content-disposition": f"attachment; filename={nome_file_pulito}.eia"}
+    )
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
