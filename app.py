@@ -100,11 +100,11 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not clean:
             continue
 
-        if re.search(r'\bG17\b', clean, re.IGNORECASE) or re.search(r'\bO1\b', clean, re.IGNORECASE) or re.search(r'\b1\b', clean):
-            if not header_iniziale_inserito:
-                righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
-                n_linea += 2
-                header_iniziale_inserito = True
+        # Header iniziale sicuro (senza falsi positivi)
+        if (re.search(r'\bG17\b', clean, re.IGNORECASE) or re.search(r'\bO1\b', clean, re.IGNORECASE)) and not header_iniziale_inserito:
+            righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
+            n_linea += 2
+            header_iniziale_inserito = True
             continue
 
         if re.search(r'\bG49\b', clean, re.IGNORECASE):
