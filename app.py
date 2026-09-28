@@ -179,7 +179,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
             clean = "Z3"
 
-        # Cicli di foratura G81 / G83 / G84 / G85 e rimozione del primo posizionamento ridondante
         if any(clean.startswith(g) for g in ["G81", "G83", "G84", "G85"]):
             in_ciclo_foratura = True
             parts = clean.split()
@@ -189,12 +188,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             clean = f"G99 {cmd_g} {resto}"
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
-            
-            if i < len(righe_greffe):
-                prox_riga = righe_greffe[i].strip()
-                prox_clean = re.sub(r'^N\d+\s*', '', prox_riga)
-                if any(k in prox_clean.upper() for k in ['X', 'Y']) and not any(g in prox_clean.upper() for g in ['G80', 'G0', 'G1']):
-                    i += 1
             continue
 
         if clean.startswith("G80"):
@@ -223,6 +216,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             n_linea += 2
             continue
 
+        # Gestione corretta dello spostamento in rapido sull'ultimo movimento in Z di ogni passata
         is_z_rapido = False
         if ("Z" in clean and not "Z-" in clean and not any(g in clean for g in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3'])) or clean in ["Z3", "Z100"]:
             is_pre_foratura = False
@@ -244,6 +238,8 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             clean = re.sub(r'^G0?1\s*', '', clean)
             clean = re.sub(r'^G0?0?\s*', '', clean)
             if not clean.startswith("Z"):
+                clean = f"G00 {clean}".strip()
+            else:
                 clean = f"G00 {clean}".strip()
 
         is_g_speciale = any(clean.startswith(g) for g in ["G02", "G2", "G03", "G3"])
