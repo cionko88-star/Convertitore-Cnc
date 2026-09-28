@@ -69,6 +69,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     header_iniziale_inserito = False
     in_ciclo_foratura = False
     utensile_corrente = None
+    inserito_primo_g64_utensile = False  # Flag per gestire il primo G64 dopo i giri
     
     i = 0
     while i < len(righe_greffe):
@@ -89,6 +90,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             
             if "PREFORI PER M6" in commento.upper() and utensile_corrente != "4":
                 utensile_corrente = "4"
+                inserito_primo_g64_utensile = False
                 descrizione = utensili_info.get("4", "PUNTA FORATA")
                 righe_elaborate.append(f"N{n_linea} T4 M06 M5 M9 ( T4 - {descrizione} )")
                 n_linea += 2
@@ -100,7 +102,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if not clean:
             continue
 
-        # Header iniziale sicuro (senza falsi positivi)
         if (re.search(r'\bG17\b', clean, re.IGNORECASE) or re.search(r'\bO1\b', clean, re.IGNORECASE)) and not header_iniziale_inserito:
             righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
             n_linea += 2
@@ -114,6 +115,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if match_cambio:
             t_num = match_cambio.group(1)
             utensile_corrente = t_num
+            inserito_primo_g64_utensile = False  # Reset flag al cambio utensile
             descrizione = utensili_info.get(t_num, "")
 
             prossimo_t = ""
@@ -237,8 +239,12 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 is_z_rapido = True
 
         if is_z_rapido and not in_ciclo_foratura:
-            righe_elaborate.append(f"N{n_linea} G64")
-            n_linea += 2
+            if inserito_primo_g64_utensile:
+                righe_elaborate.append(f"N{n_linea} G64")
+                n_linea += 2
+            else:
+                inserito_primo_g64_utensile = True  # Salta il primo G64 dopo i giri e segna che è passato
+            
             modo_movimento_corrente = "G00"
             clean = re.sub(r'^G0?1\s*', '', clean)
             clean = re.sub(r'^G0?0?\s*', '', clean)
@@ -261,9 +267,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             if modo_movimento_corrente == "G01" and any(k in clean for k in ['X', 'Y', 'Z']):
                 pass
 
-        # =========================================================================
-        # INSERIMENTO DI G61.1 IN UN BLOCCO A PARTE PRIMA DELLO SPOSTAMENTO IN Z IN G1
-        # =========================================================================
+        # Inserimento di G61.1 in un blocco a parte prima dello spostamento in Z in G1
         ha_z = bool(re.search(r'\bZ-?\d+', clean))
         if ha_z and modo_movimento_corrente == "G01" and not in_ciclo_foratura:
             righe_elaborate.append(f"N{n_linea} G61.1")
