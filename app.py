@@ -61,15 +61,13 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         elif "T4" in riga and "M51" in riga and "4" not in t_sequenza_ordinata:
             if "4" not in t_sequenza_ordinata:
                 t_sequenza_ordinata.append("4")
-
-    primo_utensile = t_sequenza_ordinata[0] if t_sequenza_ordinata else "1"
     
     n_linea = 2
     modo_movimento_corrente = None
     header_iniziale_inserito = False
     in_ciclo_foratura = False
     utensile_corrente = None
-    inserito_primo_g64_utensile = False  # Flag per gestire il primo G64 dopo i giri
+    inserito_primo_g64_utensile = False
     
     i = 0
     while i < len(righe_greffe):
@@ -115,7 +113,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if match_cambio:
             t_num = match_cambio.group(1)
             utensile_corrente = t_num
-            inserito_primo_g64_utensile = False  # Reset flag al cambio utensile
+            inserito_primo_g64_utensile = False
             descrizione = utensili_info.get(t_num, "")
 
             prossimo_t = ""
@@ -243,7 +241,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 righe_elaborate.append(f"N{n_linea} G64")
                 n_linea += 2
             else:
-                inserito_primo_g64_utensile = True  # Salta il primo G64 dopo i giri e segna che è passato
+                inserito_primo_g64_utensile = True
             
             modo_movimento_corrente = "G00"
             clean = re.sub(r'^G0?1\s*', '', clean)
@@ -267,7 +265,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             if modo_movimento_corrente == "G01" and any(k in clean for k in ['X', 'Y', 'Z']):
                 pass
 
-        # Inserimento di G61.1 in un blocco a parte prima dello spostamento in Z in G1
         ha_z = bool(re.search(r'\bZ-?\d+', clean))
         if ha_z and modo_movimento_corrente == "G01" and not in_ciclo_foratura:
             righe_elaborate.append(f"N{n_linea} G61.1")
@@ -275,20 +272,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
-        
-    # Chiusura finale pulita
-    descrizione_primo = utensili_info.get(primo_utensile, "")
-    if descrizione_primo:
-        if re.match(rf'^T\s*{primo_utensile}\b', descrizione_primo, re.IGNORECASE):
-            desc_str_finale = f" ( {descrizione_primo} )"
-        else:
-            desc_str_finale = f" ( T{primo_utensile} - {descrizione_primo} )"
-    else:
-        desc_str_finale = f" ( T{primo_utensile} )"
-
-    righe_elaborate.append(f"N{n_linea} T{primo_utensile} M06 M5 M9{desc_str_finale}")
-    n_linea += 2
-    righe_elaborate.append(f"N{n_linea} M30")
 
     return "\n".join(righe_elaborate)
 
