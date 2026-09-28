@@ -82,7 +82,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             if "MACCHINA:" in commento.upper():
                 commento = "(MACCHINA: MAZAK)"
 
-            # RIMOSSO: Nessuna riga vuota aggiunta prima dei commenti dell'intestazione
+            # Nessuna riga vuota aggiunta prima dei commenti dell'intestazione
             righe_elaborate.append(commento)
             continue
             
@@ -190,7 +190,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
             clean = "Z3"
 
-        # 1. Intercettazione preventiva del movimento X/Y PRIMA del ciclo
+        # Intercettazione preventiva del movimento X/Y PRIMA del ciclo di foratura
         ha_xy = bool(re.search(r'[XY]', clean))
         is_pre_ciclo = False
         if ha_xy and not in_ciclo_foratura:
@@ -233,7 +233,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
             
-            # 2. CONTROLLO E SCARTO: Se la riga SUBITO DOPO il G81 ripete esattamente le stesse coordinate X/Y iniziali, la scartiamo!
+            # Scarto riga doppione coordinate subito dopo il G81
             if i < len(righe_greffe):
                 prox_riga_chk = righe_greffe[i].strip()
                 prox_clean_chk = re.sub(r'^N\d+\s*', '', prox_riga_chk)
@@ -248,7 +248,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                     y_n = float(m_y_next.group(1))
                     if 'ultimo_x_emesso' in locals() and 'ultimo_y_emesso' in locals():
                         if x_n == ultimo_x_emesso and y_n == ultimo_y_emesso:
-                            i += 1  # SALTIAMO LA RIGA DOPPIONE DELLE COORDINATE
+                            i += 1
             continue
 
         if clean.startswith("G80"):
@@ -310,6 +310,9 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         elif clean.startswith("G01") or clean.startswith("G1 "):
             modo_movimento_corrente = "G01"
             clean = re.sub(r'^G0?1\s*', '', clean)
+        elif not modo_movimento_corrente and ha_xy and not in_ciclo_foratura:
+            # Assicura che il primo posizionamento X/Y fuori dai cicli sia sempre G00
+            modo_movimento_corrente = "G00"
 
         if is_g_speciale:
             m_i = re.search(r'\bI(-?\d+\.?\d*)', clean)
