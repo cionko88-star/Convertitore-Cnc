@@ -57,7 +57,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
     in_ciclo_foratura = False
     utensile_corrente = None
     inserito_primo_g64_utensile = False
-    forza_g00_successivo = False  # Flag cruciale per forzare il G00 dopo S... M3
+    forza_g00_successivo = False
     
     x_corrente = 0.0
     y_corrente = 0.0
@@ -170,8 +170,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
 
             righe_elaborate.append(f"N{n_linea} {s_val} M3 T{prox_t} {codice_acc}")
             n_linea += 2
-            
-            # ATTIVIAMO IL FLAG: IL PROSSIMO MOVIMENTO X Y DEVE ESSERE IN G00!
             forza_g00_successivo = True
             continue
 
@@ -195,7 +193,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if clean in ["G00 Z3 M18", "G0 Z3 M18", "G00 Z3", "G0 Z3"]:
             clean = "Z3"
 
-        # Intercettazione preventiva del movimento X/Y PRIMA del ciclo di foratura
+        # Intercettazione preventiva del movimento X/Y PRIMA del ciclo
         ha_xy = bool(re.search(r'[XY]', clean))
         is_pre_ciclo = False
         if ha_xy and not in_ciclo_foratura:
@@ -213,7 +211,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             clean = re.sub(r'^G0?1\s*', '', clean)
             clean = f"G00 {clean}".strip()
             ultimo_modo_emesso = "G00"
-            forza_g00_successivo = False  # Consumiamo il flag
+            forza_g00_successivo = False
             
             m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', clean)
             if m_x_upd:
@@ -229,12 +227,24 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             ultimo_y_emesso = y_corrente
             continue
 
+        # GESTIONE CICLI DI FORATURA / MASCHIATURA (G81, G83, G84, G85)
         if any(clean.startswith(g) for g in ["G81", "G83", "G84", "G85"]):
             in_ciclo_foratura = True
             parts = clean.split()
             cmd_g = parts[0]
             resto = " ".join(parts[1:])
             resto = re.sub(r'J\d+', 'R3', resto)
+            
+            # CORREZIONE SPECIFICA PER LA MASCHIATURA (G84): CONVERSIONE DEL PASSO F DA FORMATO SELCA A REALE
+            if cmd_g == "G84":
+                m_f = re.search(r'\bF(\d+(?:\.\d+)?)', resto)
+                if m_f:
+                    val_f = float(m_f.group(1))
+                    # Se il passo è espresso in millesimi (es. 1000, 1250, 1500), lo convertiamo nel reale (1, 1.25, 1.5)
+                    if val_f >= 10:
+                         passo_reale = val_f / 1000.0
+                         resto = re.sub(r'\bF\d+(?:\.\d+)?', f'F{passo_reale:g}', resto)
+
             clean = f"G99 {cmd_g} {resto}"
             righe_elaborate.append(f"N{n_linea} {clean}")
             n_linea += 2
