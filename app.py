@@ -101,7 +101,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             continue
 
         if "M30" in clean.upper():
-            break # Gestiamo la chiusura in modo strutturato sotto
+            break # Interrompiamo qui per gestire la chiusura pulita standard in fondo
 
         if (re.search(r'\bG17\b', clean, re.IGNORECASE) or re.search(r'\bO1\b', clean, re.IGNORECASE)) and not header_iniziale_inserito:
             righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
@@ -276,9 +276,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
 
-    # Pulizia finale ed inserimento blocco finale con M5 M9, richiamo T1 M06 e M30
-    # Rimuoviamo eventuali vecchi blocchi di fine programma spuri
-    # Troviamo il primo utensile (di default T1 se presente nella sequenza, altrimenti T1)
+    # Chiusura standard pulita in fondo
     primo_t = t_sequenza_ordinata[0] if t_sequenza_ordinata else "1"
     desc_primo_t = utensili_info.get(primo_t, "")
     desc_str_finale = f" ( T{primo_t} - {desc_primo_t} )" if desc_primo_t else f" ( T{primo_t} )"
