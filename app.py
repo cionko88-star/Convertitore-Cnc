@@ -101,7 +101,8 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             continue
 
         if "M30" in clean.upper():
-            break # Interrompiamo qui per gestire la chiusura pulita standard in fondo
+            righe_elaborate.append(f"N{n_linea} M30")
+            break
 
         if (re.search(r'\bG17\b', clean, re.IGNORECASE) or re.search(r'\bO1\b', clean, re.IGNORECASE)) and not header_iniziale_inserito:
             righe_elaborate.append(f"N{n_linea} G00 G17 G40 G49 G80 G54 G90")
@@ -276,16 +277,29 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
 
-    # Chiusura standard pulita in fondo
-    primo_t = t_sequenza_ordinata[0] if t_sequenza_ordinata else "1"
-    desc_primo_t = utensili_info.get(primo_t, "")
-    desc_str_finale = f" ( T{primo_t} - {desc_primo_t} )" if desc_primo_t else f" ( T{primo_t} )"
-
-    righe_elaborate.append(f"N{n_linea} M5 M9")
-    n_linea += 2
-    righe_elaborate.append(f"N{n_linea} T{primo_t} M06{desc_str_finale}")
-    n_linea += 2
-    righe_elaborate.append(f"N{n_linea} M30")
+    # Post-elaborazione: rimozione blocco utensile finale non seguito da lavorazioni prima di M30
+    idx_m30 = -1
+    for idx, riga in enumerate(righe_elaborate):
+        if "M30" in riga:
+            idx_m30 = idx
+            break
+            
+    if idx_m30 > 0:
+        j = idx_m30 - 1
+        while j >= 0:
+            if "M06" in righe_elaborate[j]:
+                ha_movimenti = False
+                for k in range(j + 1, idx_m30):
+                    r_test = righe_elaborate[k]
+                    if any(kwd in r_test for kwd in ['G01', 'G1', 'G02', 'G2', 'G03', 'G3', 'X', 'Y', 'Z-']):
+                        ha_movimenti = True
+                        break
+                if not ha_movimenti:
+                    m30_riga = righe_elaborate[idx_m30]
+                    righe_elaborate = righe_elaborate[:j]
+                    righe_elaborate.append(m30_riga)
+                break
+            j -= 1
 
     return "\n".join(righe_elaborate)
 
