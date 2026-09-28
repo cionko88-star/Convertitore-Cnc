@@ -227,7 +227,6 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             ultimo_y_emesso = y_corrente
             continue
 
-        # GESTIONE CICLI DI FORATURA / MASCHIATURA (G81, G83, G84, G85)
         if any(clean.startswith(g) for g in ["G81", "G83", "G84", "G85"]):
             in_ciclo_foratura = True
             parts = clean.split()
@@ -235,12 +234,11 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             resto = " ".join(parts[1:])
             resto = re.sub(r'J\d+', 'R3', resto)
             
-            # CORREZIONE SPECIFICA PER LA MASCHIATURA (G84): CONVERSIONE DEL PASSO F DA FORMATO SELCA A REALE
+            # Conversione passo maschiatura G84 da millesimale a reale
             if cmd_g == "G84":
                 m_f = re.search(r'\bF(\d+(?:\.\d+)?)', resto)
                 if m_f:
                     val_f = float(m_f.group(1))
-                    # Se il passo è espresso in millesimi (es. 1000, 1250, 1500), lo convertiamo nel reale (1, 1.25, 1.5)
                     if val_f >= 10:
                          passo_reale = val_f / 1000.0
                          resto = re.sub(r'\bF\d+(?:\.\d+)?', f'F{passo_reale:g}', resto)
@@ -326,6 +324,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
             modo_movimento_corrente = "G01"
             clean = re.sub(r'^G0?1\s*', '', clean)
 
+        # CONVERSIONE DA I/J ASSOLUTE (SELCA) A I/J INCREMENTALI (ISO) PER G02/G03
         if is_g_speciale:
             m_i = re.search(r'\bI(-?\d+\.?\d*)', clean)
             m_j = re.search(r'\bJ(-?\d+\.?\d*)', clean)
@@ -344,6 +343,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 else:
                     clean += f" J{j_inc:g}"
             
+            # Forza l'emissione del G01 nel blocco successivo
             ultimo_modo_emesso = "G02_OR_G03"
 
         m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', clean)
