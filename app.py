@@ -195,7 +195,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
         if any(clean.startswith(g) for g in ["G81", "G83", "G84", "G85"]):
             in_ciclo_foratura = True
             
-            # 1. PRIMA DEL CICLO: Se la riga successiva contiene coordinate X/Y, stampale in G00 PRIMA di richiamare il ciclo G81/G83
+            # 1. PRIMA DEL CICLO: Se la riga successiva contiene coordinate X/Y, stampale in G00 PRIMA e CONSUMA la riga
             if i < len(righe_greffe):
                 prox_riga = righe_greffe[i].strip()
                 prox_clean = re.sub(r'^N\d+\s*', '', prox_riga)
@@ -204,7 +204,7 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 if any(k in prox_clean.upper() for k in ['X', 'Y']) and not any(g in prox_clean.upper() for g in ['G80', 'G0', 'G1']):
                     righe_elaborate.append(f"N{n_linea} G00 {prox_clean}")
                     n_linea += 2
-                    i += 1
+                    i += 1  # SALTIAMO LA RIGA SUCCESSIVA PER EVITARE DUPLICAZIONI
                     ultimo_modo_emesso = "G00"
                     
                     m_x_upd = re.search(r'\bX(-?\d+\.?\d*)', prox_clean)
