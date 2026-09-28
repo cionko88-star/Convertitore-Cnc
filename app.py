@@ -262,11 +262,12 @@ def converti_selca_a_iso(testo_selca: str) -> str:
                 pass
 
         # =========================================================================
-        # INSERIMENTO AUTOMATICO DI G61.1 PRIMA DI OGNI SPOSTAMENTO IN Z IN G1
+        # INSERIMENTO DI G61.1 IN UN BLOCCO A PARTE PRIMA DELLO SPOSTAMENTO IN Z IN G1
         # =========================================================================
         ha_z = bool(re.search(r'\bZ-?\d+', clean))
-        if ha_z and modo_movimento_corrente == "G01" and not in_ciclo_foratura and not "G61.1" in clean:
-            clean = f"G61.1 {clean}".strip()
+        if ha_z and modo_movimento_corrente == "G01" and not in_ciclo_foratura:
+            righe_elaborate.append(f"N{n_linea} G61.1")
+            n_linea += 2
 
         righe_elaborate.append(f"N{n_linea} {clean}")
         n_linea += 2
